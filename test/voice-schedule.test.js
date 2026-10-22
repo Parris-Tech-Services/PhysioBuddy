@@ -111,3 +111,15 @@ test('storage survives bad data and round-trips backups', () => {
   assert.throws(() => parseBackup('nope'), /not JSON/);
   assert.equal(normaliseState({ schemaVersion: 1, customProgrammes: [{ id: 'x' }] }).customProgrammes.length, 0);
 });
+
+test('exercise feedback counts ratings per exercise within the window', async () => {
+  const { exerciseFeedback } = await import('../js/progress.js');
+  const s = [
+    sum(zonedTimeToMs('2026-10-22', '06:35'), { exercises: [{ exerciseId: 'a', status: 'completed', rating: { discomfort: 'more', difficulty: 'hard' } }, { exerciseId: 'b', status: 'skipped', rating: null }] }),
+    sum(zonedTimeToMs('2026-10-22', '08:35'), { exercises: [{ exerciseId: 'a', status: 'partial', rating: { difficulty: 'easy' } }] }),
+    sum(zonedTimeToMs('2026-10-01', '08:35'), { exercises: [{ exerciseId: 'a', status: 'completed', rating: { difficulty: 'hard' } }] }),
+  ];
+  const rows = exerciseFeedback(s, '2026-10-09');
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { exerciseId: 'a', done: 2, discomfort: { none: 0, mild: 0, more: 1 }, difficulty: { easy: 1, ok: 0, hard: 1 } });
+});

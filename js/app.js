@@ -4,7 +4,7 @@
 import { PROGRAMMES, EXERCISES, AREAS, CLINICIAN, getProgramme, getExercise, prescriptionHistory, doseChanges, describeDose } from './data.js';
 import { createSession, apply, recover, summarize, currentItem, currentUnit, holdRemainingMs, remainingText } from './session.js';
 import { TZ, zonedDate, programmeStatus, nextReminder, remindersForDate, slotFor, formatTime12, buildIcs, icsUtc, addDays, sortTimes } from './schedule.js';
-import { dailySeries, weeklySummary, weeklyMessage, toCsv } from './progress.js';
+import { dailySeries, weeklySummary, weeklyMessage, toCsv, exerciseFeedback } from './progress.js';
 import { loadState, saveState, exportBackup, parseBackup, defaultState } from './store.js';
 import { mountFigure, renderDiagram, FIGURES } from './figures.js';
 import { Coach, Listener, englishVoices } from './voice.js';
@@ -273,14 +273,32 @@ function onExerciseComplete() {
   if (it.status === 'skipped') return;
   coach.speak(`${msg}${more ? ' Ready for the next one?' : ''}`, {
     remember: false,
-    onEnd: () => {
-      clearTimeout(advanceTimer);
-      advanceTimer = setTimeout(() => {
-        const cur = S();
-        if (cur && cur.status === 'active' && currentItem(cur)?.phase === 'complete') dispatch({ type: 'next' });
-      }, 1200);
-    },
+    onEnd: () => scheduleAdvance(RATE_WINDOW_MS),
   });
+}
+
+// After an exercise, wait long enough for the optional rating taps, then
+// move on by itself so a hands-free session never stalls.
+const RATE_WINDOW_MS = 7000;
+function scheduleAdvance(ms) {
+  clearTimeout(advanceTimer);
+  advanceTimer = setTimeout(() => {
+    const cur = S();
+    if (cur && cur.status === 'active' && currentItem(cur)?.phase === 'complete') dispatch({ type: 'next' });
+  }, ms);
+}
+
+function rateExercise(field, value) {
+  const s = S();
+  db.activeSession = apply(s, { type: 'rate', index: s.index, [field]: value }, now()).state;
+  save();
+  const rating = currentItem(S()).rating || {};
+  if (field === 'discomfort' && value === 'more') {
+    scheduleAdvance(15000);
+    coach.speak("Thanks for telling me. If that triggered a headache or significant pain, it's fine to stop — tap That hurts. Otherwise we'll carry on gently.", { remember: false });
+  } else if (rating.discomfort && rating.difficulty) scheduleAdvance(1200);
+  else scheduleAdvance(RATE_WINDOW_MS);
+  render();
 }
 
 // Guided counting: after a rep cue, count it after `repSeconds` unless the
@@ -747,7 +765,8 @@ function stageHtml(s, it, unit, rx) {
       ${hurt}</div>`;
   }
   if (it.phase === 'complete') {
-    return `<div class="celebrate"><div class="big-emoji" aria-hidden="true">✓</div><p><strong>${it.status === 'skipped' ? 'Skipped' : 'Done'}</strong></p></div><div class="actions"><button class="btn primary huge" data-action="next">Next exercise →</button></div>`;
+    const rate = it.status === 'skipped' ? '' : ratingHtml(it.rating || {});
+    return `<div class="celebrate"><div class="big-emoji" aria-hidden="true">✓</div><p><strong>${it.status === 'skipped' ? 'Skipped' : 'Done'}</strong></p></div>${rate}<div class="actions"><button class="btn primary huge" data-action="next">Next exercise →</button></div>`;
   }
   if (!it.units.length) {
     return `<p class="muted" style="text-align:center">No count prescribed — do this as John showed you.</p>
@@ -773,6 +792,17 @@ function stageHtml(s, it, unit, rx) {
       <button class="btn hide-handsfree" data-action="skip">Skip this one</button>
       ${hurt}
     </div>`;
+}
+
+const RATING_LABELS = {
+  discomfort: { none: 'No discomfort', mild: 'Mild', more: 'More than usual' },
+  difficulty: { easy: 'Easy', ok: 'OK', hard: 'Hard' },
+};
+
+function ratingHtml(rating) {
+  const group = (field, title) => `<div class="rate-group" role="group" aria-label="${title}"><span class="small muted">${title}</span><div class="row">${Object.entries(RATING_LABELS[field]).map(([v, label]) => `<button class="chip" data-action="rate" data-field="${field}" data-value="${v}" aria-pressed="${rating[field] === v}">${label}</button>`).join('')}</div></div>`;
+  const warn = rating.discomfort === 'more' ? '<div class="banner warn small">If this triggered a headache or significant pain, stop and contact John. Tap <strong>That hurts</strong> on the next screen to stop.</div>' : '';
+  return `<div class="card stack"><strong>How did that feel? <span class="muted small">(optional)</span></strong>${group('discomfort', 'Discomfort')}${group('difficulty', 'Difficulty')}${warn}</div>`;
 }
 
 function timerHtml(it, unit) {
@@ -943,9 +973,22 @@ function renderProgress() {
       <div class="row"><span class="chip">${w.sessions} ${w.sessions === 1 ? 'session' : 'sessions'}</span><span class="chip">${w.activeDays}/7 days</span>${w.averageCompletion != null ? `<span class="chip">${w.averageCompletion}% average completion</span>` : ''}${w.symptomReports ? `<span class="chip warn">${w.symptomReports} symptom reports</span>` : ''}</div></section>
     <section class="card"><h2>Sessions, last 14 days</h2>${barChart(series)}<p class="small muted">Solid = full session, outlined = partly done.</p></section>
     <section class="card"><h2>Discomfort</h2>${painChart(series)}</section>
+    ${feedbackHtml(addDays(today, -13))}
     ${calendarHtml(today)}
     <section class="card"><h2>History</h2>${recent.length ? `<ul class="list">${recent.map(historyRow).join('')}</ul>` : '<p class="muted">Your sessions will appear here.</p>'}
       <div class="row"><button class="btn small" data-action="export-csv">Export CSV</button><button class="btn small" data-action="print">Print report</button></div></section>`;
+}
+
+function feedbackHtml(fromDate) {
+  const rows = exerciseFeedback(db.sessions, fromDate).filter((r) => exerciseOf(r.exerciseId));
+  if (!rows.length) return '';
+  const parts = (r) => [
+    r.discomfort.more && `${r.discomfort.more}× more discomfort than usual`,
+    r.discomfort.mild && `${r.discomfort.mild}× mild discomfort`,
+    r.difficulty.hard && `${r.difficulty.hard}× hard`,
+    r.difficulty.easy && `${r.difficulty.easy}× easy`,
+  ].filter(Boolean).join(' · ') || 'No ratings yet';
+  return `<section class="card"><h2>How each exercise felt</h2><p class="small muted">Last 14 days, from the optional ratings after each exercise.</p><ul class="list">${rows.map((r) => `<li><strong>${esc(exerciseOf(r.exerciseId).name)}</strong> <span class="small muted">· done ${r.done}×</span><div class="small${r.discomfort.more ? '" style="color:var(--warn)' : ''}">${parts(r)}</div></li>`).join('')}</ul></section>`;
 }
 
 function calendarHtml(today) {
@@ -1137,6 +1180,7 @@ const ACTIONS = {
     render();
   },
   'leave-session': () => leaveSession(),
+  rate: (el) => rateExercise(el.dataset.field, el.dataset.value),
   'exit-session': () => {
     const s = S();
     if (s && s.status === 'active') dispatch({ type: 'pause' });

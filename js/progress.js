@@ -69,3 +69,21 @@ function csvCell(v) {
   const s = String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+
+// Per-exercise feedback since `fromDate` (inclusive): how often each exercise
+// was done and how the optional discomfort/difficulty ratings fell.
+export function exerciseFeedback(sessions, fromDate, tz = TZ) {
+  const out = new Map();
+  for (const s of sessions) {
+    if (zonedDate(s.startedAt, tz) < fromDate) continue;
+    for (const ex of s.exercises || []) {
+      if (ex.status === 'skipped' || ex.status === 'pending') continue;
+      if (!out.has(ex.exerciseId)) out.set(ex.exerciseId, { exerciseId: ex.exerciseId, done: 0, discomfort: { none: 0, mild: 0, more: 0 }, difficulty: { easy: 0, ok: 0, hard: 0 } });
+      const row = out.get(ex.exerciseId);
+      row.done += 1;
+      if (ex.rating && ex.rating.discomfort in row.discomfort) row.discomfort[ex.rating.discomfort] += 1;
+      if (ex.rating && ex.rating.difficulty in row.difficulty) row.difficulty[ex.rating.difficulty] += 1;
+    }
+  }
+  return [...out.values()];
+}

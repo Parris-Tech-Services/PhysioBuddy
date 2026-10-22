@@ -256,3 +256,4 @@ dialog::backdrop { background: rgba(10, 20, 18, 0.55); }
 .figure .behind { opacity: 0.55; }
 .chip[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
 @media print { .nav, .topbar .btn, button { display: none !important; } body { background: #fff; } .card { box-shadow: none; } }
+.rate-group { margin-top: 6px; } .rate-group .row { margin-top: 4px; }

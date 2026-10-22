@@ -153,3 +153,22 @@ test('unknown actions are rejected loudly', () => {
   const s = createSession({ programme: acute, items: items(acute), now: T0 });
   assert.throws(() => apply(s, { type: 'nope' }, T0), /Unknown session action/);
 });
+
+test('per-exercise ratings are optional, validated and kept in the summary', () => {
+  let s = createSession({ programme: acute, items: items(acute).slice(3, 5), now: T0 });
+  ({ s } = run(s, [{ type: 'start' }, { type: 'begin' }]));
+  // Not rateable until the exercise is finished.
+  assert.equal(apply(s, { type: 'rate', index: 0, difficulty: 'hard' }, T0 + 5000).state.items[0].rating, undefined);
+  ({ s } = run(s, Array.from({ length: 10 }, () => ({ type: 'repDone' })), T0 + 5000));
+  s = apply(s, { type: 'rate', index: 0, discomfort: 'mild' }, T0 + 60000).state;
+  s = apply(s, { type: 'rate', index: 0, difficulty: 'hard' }, T0 + 61000).state;
+  s = apply(s, { type: 'rate', index: 0, difficulty: 'impossible' }, T0 + 62000).state;
+  assert.deepEqual(s.items[0].rating, { discomfort: 'mild', difficulty: 'hard' });
+  // Skipped exercises cannot be rated; finished sessions can still record ratings.
+  ({ s } = run(s, [{ type: 'next' }, { type: 'skip' }], T0 + 62000));
+  assert.equal(s.status, 'finished');
+  assert.equal(apply(s, { type: 'rate', index: 1, difficulty: 'easy' }, T0 + 70000).state.items[1].rating, undefined);
+  const sum = summarize(s);
+  assert.deepEqual(sum.exercises[0].rating, { discomfort: 'mild', difficulty: 'hard' });
+  assert.equal(sum.exercises[1].rating, null);
+});

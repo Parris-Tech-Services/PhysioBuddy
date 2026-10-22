@@ -140,3 +140,25 @@ test('older prescriptions stay in the Library and the review prompt appears afte
   await page.goto(APP);
   await expect(page.getByText('Time to review this programme with John.')).toBeVisible();
 });
+
+test('optional per-exercise ratings are saved and shown on Progress', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: '▶ Start My Exercises' }).click();
+  await page.getByRole('button', { name: '▶ Start' }).click();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Skip', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Supported look up' })).toBeVisible();
+  await page.getByRole('button', { name: "I'm ready" }).click();
+  for (let i = 0; i < 10; i++) await page.getByRole('button', { name: '✓ Rep done' }).click();
+  await expect(page.getByText('How did that feel?')).toBeVisible();
+  await page.getByRole('button', { name: 'More than usual' }).click();
+  await expect(page.getByText('If this triggered a headache or significant pain, stop and contact John.')).toBeVisible();
+  await page.getByRole('button', { name: 'Hard' }).click();
+  await expect(page.getByRole('button', { name: 'Hard' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Next exercise →' }).click();
+  await page.getByRole('button', { name: "I'm ready" }).click();
+  await page.getByRole('button', { name: '✓ Done' }).click();
+  await page.getByRole('button', { name: 'Next exercise →' }).click();
+  await page.getByRole('button', { name: 'Back to Today' }).click();
+  await page.getByRole('link', { name: /Progress/ }).click();
+  await expect(page.getByText('1× more discomfort than usual · 1× hard')).toBeVisible();
+});

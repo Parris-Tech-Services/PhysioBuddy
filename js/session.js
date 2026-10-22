@@ -26,6 +26,11 @@ function holdFor(dose, rep) {
   return null;
 }
 
+export const RATINGS = Object.freeze({
+  discomfort: ['none', 'mild', 'more'],
+  difficulty: ['easy', 'ok', 'hard'],
+});
+
 export function createSession({ programme, items, now, id }) {
   return {
     schemaVersion: 1,
@@ -176,6 +181,15 @@ const HANDLERS = {
     if (it && it.hold && it.hold.endsAt == null) it.hold.endsAt = now + it.hold.remainingMs;
     fx.push('resumed');
   },
+  // Optional per-exercise feedback, given after the exercise is finished.
+  rate(s, a) {
+    const it = s.items[a.index];
+    if (!it || it.phase !== 'complete' || it.status === 'skipped') return;
+    const rating = { ...(it.rating || {}) };
+    if (RATINGS.discomfort.includes(a.discomfort)) rating.discomfort = a.discomfort;
+    if (RATINGS.difficulty.includes(a.difficulty)) rating.difficulty = a.difficulty;
+    it.rating = rating;
+  },
   symptom(s, a, now) {
     s.events.push({ t: now, type: 'symptom', kind: a.kind, note: a.note || null, exerciseId: currentItem(s)?.exerciseId || null });
   },
@@ -221,7 +235,7 @@ function finishSession(s, status, now, fx) {
 }
 
 const ENDED = new Set(['finished', 'stopped']);
-const ALWAYS_ALLOWED = new Set(['setPain', 'symptom', 'confirm', 'cancelConfirm']);
+const ALWAYS_ALLOWED = new Set(['setPain', 'symptom', 'confirm', 'cancelConfirm', 'rate']);
 
 export function apply(state, action, now) {
   const handler = HANDLERS[action.type];
@@ -271,7 +285,7 @@ export function summarize(s) {
     repsDone,
     holdSeconds,
     symptoms: s.events.filter((e) => e.type === 'symptom'),
-    exercises: s.items.map((it) => ({ exerciseId: it.exerciseId, status: it.status, reps: it.unitIndex, of: it.units.length, holdSeconds: it.holdsCompletedSeconds })),
+    exercises: s.items.map((it) => ({ exerciseId: it.exerciseId, status: it.status, reps: it.unitIndex, of: it.units.length, holdSeconds: it.holdsCompletedSeconds, rating: it.rating || null })),
   };
 }
 
