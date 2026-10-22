@@ -42,3 +42,7 @@ test('supported extension keeps the hand at the back of the head', () => {
   assert.ok(dist < 22, `hand ${dist.toFixed(1)}px from head centre`);
   assert.ok(k.W[0] < k.H[0], 'hand is behind the head, not in front of the face');
 });
+
+test('a slightly negative animation time (first frame) still yields a pose', () => {
+  for (const fig of Object.values(FIGURES)) assert.ok(poseAt(fig, -5), 'pose for negative time');
+});

@@ -43,7 +43,9 @@ async function step(page) {
 }
 
 test('a full October neck session: holds, reload mid-hold, pause, resume, completion and saved history', async ({ page }) => {
-  await boot(page);
+  // Static diagrams: fast-forwarding eleven 30-second holds would otherwise
+  // render thousands of animation frames, which this test does not examine.
+  await boot(page, { figureMode: 'diagram' });
   await expect(page.getByRole('heading', { name: 'Acute neck recovery' })).toBeVisible();
   await page.getByRole('button', { name: '▶ Start My Exercises' }).click();
   await page.getByRole('button', { name: '5 out of 10' }).click();

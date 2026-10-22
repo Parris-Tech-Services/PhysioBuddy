@@ -52,6 +52,12 @@ tests, scripts and docs out of the deployment.
 - **Message John**: templated drafts (symptoms, question, update,
   appointment) that open in the phone's email/SMS app, optionally with the
   progress report; call/text the clinic. Contact details stay on the phone.
+- **Camera rep counter (beta, off by default)**: for neck turning and nodding
+  exercises, the front camera and MediaPipe's on-device face landmarker
+  (bundled in `vendor/`, see `vendor/NOTICE.md`) count out-and-back head
+  movements, and reaching the position starts a required hold. Video never
+  leaves the phone; it can't judge technique or discomfort, and buttons
+  always work.
 - **Report for John**: plain-text summary of the last 7/14/30 days (sessions,
   discomfort, symptoms, ratings, check-ins, questions and unclear prescription
   items) to share, copy, email or print.
@@ -87,6 +93,8 @@ tests, scripts and docs out of the deployment.
 | `js/milestones.js` | Cumulative milestones |
 | `js/breathing.js` | Paced-breathing timing |
 | `js/messages.js` | Message drafts and mailto/sms links |
+| `js/headpose.js` | Head angles and movement counter (pure) |
+| `js/camera.js` | Camera + on-device face tracker wiring |
 | `js/report.js` | Plain-text report for the physiotherapist |
 | `js/store.js` | Versioned localStorage state, backup/restore |
 | `js/docs.js` | PDF attachments in IndexedDB |
@@ -112,6 +120,6 @@ The page is marked `noindex`. Original PDFs are never part of the deployment.
 
 ## Needs real-device checking
 
-Voice quality and recognition, notifications, vibration, wake lock and
+Camera counting with a real face, voice quality and recognition, notifications, vibration, wake lock and
 Add to Home screen must be checked on the Android phone; headless Chromium
 cannot exercise them.

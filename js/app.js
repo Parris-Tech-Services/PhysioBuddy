@@ -13,6 +13,8 @@ import { buildReport } from './report.js';
 import { earnedMilestones, newMilestones } from './milestones.js';
 import { PATTERNS, DURATIONS, breathAt, totalCycles, cycleSeconds } from './breathing.js';
 import { TEMPLATES, composeMessage, mailtoUrl, smsUrl } from './messages.js';
+import { AXIS_FOR_FIGURE } from './headpose.js';
+import { CameraTracker } from './camera.js';
 import { MAX_ACTIVITIES, activeActivities, addActivity, archiveActivity, recordRatings, isCheckDue, activitySummary, lastCheckDate } from './function.js';
 import { addDoc, listDocs, getDoc, deleteDoc, clearDocs } from './docs.js';
 
@@ -320,7 +322,7 @@ function scheduleCount() {
   if (!s || s.status !== 'active' || !db.settings.guidedCounting || hurtOpen || s.pendingConfirm) return;
   const it = currentItem(s);
   const unit = currentUnit(s);
-  if (!it || it.phase !== 'doing' || !unit || unit.hold || it.hold) return;
+  if (!it || it.phase !== 'doing' || !unit || unit.hold || it.hold || cam) return;
   countTimer = setTimeout(() => dispatch({ type: 'repDone' }), db.settings.repSeconds * 1000);
 }
 
@@ -481,6 +483,7 @@ function startDefault() {
 
 function leaveSession() {
   clearTimeout(countTimer);
+  stopCamera();
   coach.cancel();
   db.activeSession = null;
   save();
@@ -637,6 +640,7 @@ function render() {
   const fn = pages[path] || renderHome;
   if (path !== 'session') stopFigure();
   if (path !== 'breathe') stopBreathing();
+  if (path !== 'session') stopCamera();
   fn();
   setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress', function: 'progress', breathe: 'home', learn: 'library', message: 'home' }[path] || path);
 }
@@ -747,11 +751,95 @@ function renderSession() {
     ${confirmHtml(s)}
     <div class="figure-box" id="figure-slot">${ex.figure ? '' : clarifyHtml()}</div>
     ${stageHtml(s, it, unit, rx)}
+    ${cameraHtml(ex, it)}
     <div class="caption" id="caption" aria-live="polite">${esc(caption)}</div>
     <div class="heard" id="heard" aria-live="polite">${esc(heard)}</div>
     ${detailsHtml(ex, rx)}`;
   mountSessionFigure(ex, unit, it);
+  syncCamera(ex, it);
   if (it.hold) updateTimer(holdRemainingMs(s, now()));
+}
+
+// ---------- Optional camera rep counter (beta) ----------
+// The camera only counts movements while the person has switched it on for
+// a tracked exercise. It never finishes an exercise or skips a hold: a seen
+// movement counts one rep, or starts a required hold once the position is
+// reached.
+let cam = null;
+let camEl = null;
+let camWanted = false;
+
+const camAxis = (ex) => (ex && ex.figure ? AXIS_FOR_FIGURE[ex.figure] || null : null);
+const CAM_STATUS = {
+  starting: 'Starting the camera…',
+  loading: 'Loading the movement tracker (first time can take a few seconds)…',
+  calibrating: 'Look straight ahead and keep still for a moment…',
+  tracking: 'Tracking. Move as you normally would.',
+  'no-face': "I can't see your face. Prop the phone up facing you.",
+};
+
+function cameraHtml(ex, it) {
+  if (!db.settings.cameraBeta || !camAxis(ex) || it.phase !== 'doing' || !it.units.length) return '';
+  if (!camWanted) return '<button class="btn soft block" data-action="cam-on" style="margin-top:10px">📷 Count with camera (beta)</button>';
+  return '<div class="card" id="cam-slot"></div>';
+}
+
+function syncCamera(ex, it) {
+  const axis = camAxis(ex);
+  const slot = $('#cam-slot');
+  if (!slot || !axis || it.phase !== 'doing') {
+    if (cam && (!axis || it.phase === 'complete')) stopCamera(false);
+    return;
+  }
+  if (!camEl) {
+    camEl = document.createElement('div');
+    camEl.innerHTML = `<div class="cam-row"><video class="cam-video" playsinline muted aria-label="Your camera preview"></video><div class="cam-info"><div id="cam-status" class="small" aria-live="polite">Starting…</div><div class="progress" aria-hidden="true"><div id="cam-bar" style="width:0%"></div></div><div class="small muted" id="cam-angle"></div></div></div>
+      <div class="row" style="margin-top:8px"><button class="btn small" data-action="cam-recentre">Re-centre</button><button class="btn small" data-action="cam-off">Turn camera off</button></div>
+      <p class="small muted">Counts the head movements it can see. It can't check technique or discomfort — you're in charge. Video stays on this phone.</p>`;
+  }
+  slot.append(camEl);
+  if (!cam) {
+    cam = new CameraTracker({
+      video: $('video', camEl), axis,
+      onStatus: (status, message) => {
+        const el = $('#cam-status', camEl);
+        if (el) el.textContent = message || CAM_STATUS[status] || '';
+        if (status === 'calibrating') coach.speak('Look straight ahead for a moment.', { remember: false });
+        if (['blocked', 'no-camera', 'error'].includes(status)) {
+          toast(message);
+          stopCamera();
+        }
+      },
+      onUpdate: ({ value, progress }) => {
+        const bar = $('#cam-bar', camEl);
+        if (bar) bar.style.width = `${Math.round(progress * 100)}%`;
+        const a = $('#cam-angle', camEl);
+        if (a) a.textContent = `About ${Math.round(Math.abs(value))}° from your starting position`;
+      },
+      onEvent: onCameraEvent,
+    });
+    cam.start();
+  } else cam.setAxis(axis);
+}
+
+function onCameraEvent(e) {
+  const s = S();
+  if (!s || s.status !== 'active') return;
+  const it = currentItem(s);
+  const unit = currentUnit(s);
+  if (!it || it.phase !== 'doing' || !unit) return;
+  if (e === 'calibrated') coach.speak("Got it. Go ahead when you're ready.", { remember: false });
+  else if (e === 'reached') {
+    buzz(15);
+    if (unit.hold && unit.hold.required && !it.hold) dispatch({ type: 'startHold' });
+  } else if (e === 'rep' && !it.hold && !(unit.hold && unit.hold.required)) dispatch({ type: 'repDone' });
+}
+
+function stopCamera(forget = true) {
+  if (cam) cam.stop(false);
+  cam = null;
+  camEl = null;
+  if (forget) camWanted = false;
 }
 
 function clarifyHtml() {
@@ -1295,6 +1383,8 @@ function renderSettings() {
       ${toggle('listenOn', 'Listen for voice commands')}
       <p class="small muted">${listener.supported ? 'Uses the microphone only while the app is open. Every command also has a button.' : 'This browser does not support voice commands — buttons work everywhere.'}</p>
       ${toggle('guidedCounting', 'Count reps for me')}
+      ${toggle('cameraBeta', 'Camera rep counter (beta)')}
+      <p class="small muted">Adds a "Count with camera" button to neck turning and nodding exercises. It uses the front camera to count the head movements it can see; video is processed on this phone and never saved or uploaded. It can't judge technique or discomfort, and the buttons always still work.</p>
       <label class="field">Seconds per rep when counting<select data-setting="repSeconds" data-type="number">${[3, 4, 5, 6, 8].map((n) => `<option value="${n}">${n} seconds</option>`).join('')}</select></label>
       ${toggle('relaxCues', 'Remind me to relax my shoulders and not rush')}
     </section>
@@ -1636,6 +1726,17 @@ const ACTIONS = {
       toast('Copy was blocked — select the message text and copy it instead.');
     }
   },
+  'cam-on': () => {
+    camWanted = true;
+    clearTimeout(countTimer);
+    render();
+  },
+  'cam-off': () => {
+    stopCamera();
+    render();
+    scheduleCount();
+  },
+  'cam-recentre': () => cam && cam.recalibrate(),
   'report-days': (el) => {
     reportDays = Number(el.dataset.days);
     render();

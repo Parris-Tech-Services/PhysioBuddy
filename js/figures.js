@@ -304,7 +304,8 @@ export function poseAt(fig, ms, side = null) {
   const rest = 900;
   const step = move + rest;
   const n = loop.length;
-  const tt = ms % (step * n);
+  // rAF timestamps can be slightly earlier than the mount time, so clamp.
+  const tt = Math.max(0, ms) % (step * n);
   const i = Math.floor(tt / step);
   const within = tt - i * step;
   const a = loop[i];
@@ -333,9 +334,14 @@ export function mountFigure(el, figId, { mode = 'animated', side = null, reduced
   const live = el.querySelector('.live');
   let raf = 0;
   const t0 = performance.now();
+  let last = -Infinity;
+  // ~30 fps is smooth for these slow movements and halves battery use.
   const frame = (t) => {
     if (!el.isConnected) return;
-    live.innerHTML = poseSvg(fig, poseAt(fig, t - t0, side), '');
+    if (t - last >= 32) {
+      last = t;
+      live.innerHTML = poseSvg(fig, poseAt(fig, t - t0, side), '');
+    }
     raf = requestAnimationFrame(frame);
   };
   raf = requestAnimationFrame(frame);
