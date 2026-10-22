@@ -3,6 +3,7 @@
 // exactly what the person recorded — nothing is inferred or scored.
 import { TZ, zonedDate, addDays, daysBetween } from './schedule.js';
 import { exerciseFeedback } from './progress.js';
+import { activitySummary } from './function.js';
 
 const fmt = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const avg = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
@@ -42,7 +43,16 @@ function checkinLines(checkins, w) {
   return lines;
 }
 
-export function buildReport({ sessions, programmes, checkins = {}, questions = [], flags = [], exerciseName, endDate, days = 7, clinician = 'John Robins', tz = TZ }) {
+function activityLines(fn) {
+  const rows = activitySummary(fn).filter((a) => a.count);
+  if (!rows.length) return ['- Not recorded'];
+  return rows.map((a) => {
+    const trend = a.change == null ? `${a.latest.score}/10 on ${fmt(a.latest.date)}` : `${a.first.score} → ${a.latest.score}/10 (${fmt(a.first.date)} to ${fmt(a.latest.date)})`;
+    return `- ${a.name}: ${trend}${a.archived ? ' [no longer tracked]' : ''}`;
+  });
+}
+
+export function buildReport({ sessions, programmes, checkins = {}, fn = { activities: [], ratings: [] }, questions = [], flags = [], exerciseName, endDate, days = 7, clinician = 'John Robins', tz = TZ }) {
   const w = reportWindow(endDate, days);
   const list = sessions.filter((s) => inWindow(s.startedAt, w, tz)).map((s) => ({ ...s, day: zonedDate(s.startedAt, tz) }));
   const tracked = list.filter((s) => !s.manual);
@@ -75,6 +85,9 @@ export function buildReport({ sessions, programmes, checkins = {}, questions = [
     '',
     'How each exercise felt',
     ...(feedback.length ? feedback : ['- No exercises recorded']),
+    '',
+    'Everyday activities (0 = unable, 10 = as well as before)',
+    ...activityLines(fn),
     '',
     'Questions for you',
     ...(open.length ? open.map((q) => `- ${q}`) : ['- None']),

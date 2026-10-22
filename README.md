@@ -39,6 +39,9 @@ tests, scripts and docs out of the deployment.
   ratings; "more than usual" surfaces the stop-and-contact-John precaution.
 - **Daily check-in** on Today: neck discomfort, headache, sleep — trended on
   Progress.
+- **Weekly everyday-activity check** (Patient-Specific Functional Scale
+  style): up to three activities rated 0–10 once a week; change shown on
+  Progress and in the report. Scores are displayed, never interpreted.
 - **Report for John**: plain-text summary of the last 7/14/30 days (sessions,
   discomfort, symptoms, ratings, check-ins, questions and unclear prescription
   items) to share, copy, email or print.
@@ -70,6 +73,7 @@ tests, scripts and docs out of the deployment.
 | `js/commands.js` | Spoken-phrase → command parser |
 | `js/schedule.js` | Sydney time, reminder slots, programme windows, .ics |
 | `js/progress.js` | Summaries, charts data, CSV, ratings and check-ins |
+| `js/function.js` | Weekly everyday-activity check |
 | `js/report.js` | Plain-text report for the physiotherapist |
 | `js/store.js` | Versioned localStorage state, backup/restore |
 | `js/docs.js` | PDF attachments in IndexedDB |

@@ -10,6 +10,7 @@ import { mountFigure, renderDiagram, FIGURES } from './figures.js';
 import { Coach, Listener, englishVoices } from './voice.js';
 import { COMMAND_HELP } from './commands.js';
 import { buildReport } from './report.js';
+import { MAX_ACTIVITIES, activeActivities, addActivity, archiveActivity, recordRatings, isCheckDue, activitySummary, lastCheckDate } from './function.js';
 import { addDoc, listDocs, getDoc, deleteDoc, clearDocs } from './docs.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -624,11 +625,11 @@ function route() {
 function render() {
   const { path, arg } = route();
   document.body.classList.toggle('in-session', path === 'session' && Boolean(S()));
-  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, settings: renderSettings, add: renderAdd, help: renderHelp };
+  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, function: renderFunction, settings: renderSettings, add: renderAdd, help: renderHelp };
   const fn = pages[path] || renderHome;
   if (path !== 'session') stopFigure();
   fn();
-  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress' }[path] || path);
+  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress', function: 'progress' }[path] || path);
 }
 
 function stopFigure() {
@@ -659,7 +660,7 @@ function renderHome() {
   const cards = active.map(programmeCard).join('') || `<div class="card"><h2>No programme active</h2><p class="muted">Choose a programme from the Library, or add new instructions from John.</p><a class="btn primary" href="#/library">Open Library</a></div>`;
   view.innerHTML = `
     <header class="topbar"><div><h1>PhysioBuddy</h1><div class="sub">${new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })}</div></div>${micChip()}</header>
-    ${storageBanner()}${due}${resume}${cards}${checkinHtml()}
+    ${storageBanner()}${due}${resume}${cards}${checkinHtml()}${functionDueHtml()}
     <p class="small muted">This app supports ${esc(CLINICIAN.name)}'s prescribed exercises. It does not replace his assessment. If something feels wrong, stop and contact him.</p>`;
 }
 
@@ -993,6 +994,7 @@ function renderProgress() {
     <section class="card"><h2>Sessions, last 14 days</h2>${barChart(series)}<p class="small muted">Solid = full session, outlined = partly done.</p></section>
     <section class="card"><h2>Discomfort</h2>${painChart(series)}</section>
     <section class="card"><h2>Daily check-ins</h2>${checkinChart(checkinSeries(db.checkins, today, 14))}</section>
+    ${functionCardHtml()}
     ${feedbackHtml(addDays(today, -13))}
     ${calendarHtml(today)}
     <section class="card"><h2>History</h2>${recent.length ? `<ul class="list">${recent.map(historyRow).join('')}</ul>` : '<p class="muted">Your sessions will appear here.</p>'}
@@ -1024,6 +1026,40 @@ function feedbackHtml(fromDate) {
   return `<section class="card"><h2>How each exercise felt</h2><p class="small muted">Last 14 days, from the optional ratings after each exercise.</p><ul class="list">${rows.map((r) => `<li><strong>${esc(exerciseOf(r.exerciseId).name)}</strong> <span class="small muted">· done ${r.done}×</span><div class="small${r.discomfort.more ? '" style="color:var(--warn)' : ''}">${parts(r)}</div></li>`).join('')}</ul></section>`;
 }
 
+// ---------- Weekly everyday-activity check ----------
+function functionDueHtml() {
+  if (!isCheckDue(db.function, zonedDate(now()))) return '';
+  return `<div class="banner info row"><span>Your weekly activity check is due — about a minute.</span><span class="spacer"></span><a class="btn small primary" href="#/function">Rate now</a></div>`;
+}
+
+function functionCardHtml() {
+  const rows = activitySummary(db.function).filter((a) => !a.archived);
+  const body = rows.length
+    ? `<ul class="list">${rows.map((a) => `<li><strong>${esc(a.name)}</strong><div class="small">${a.latest ? `${a.latest.score}/10${a.change != null ? ` · ${a.change > 0 ? '+' : ''}${a.change} since ${fmtDate(a.first.date)}` : ''}` : 'Not rated yet'}</div></li>`).join('')}</ul>`
+    : '<p class="small muted">Pick up to three everyday things your neck makes harder and rate them once a week, so you and John can see real-life progress.</p>';
+  return `<section class="card"><h2>Everyday activities</h2>${body}<a class="btn small soft" href="#/function">${rows.length ? 'Rate or edit activities' : 'Set up activities'}</a></section>`;
+}
+
+let fnDraft = {};
+
+function renderFunction() {
+  const acts = activeActivities(db.function);
+  const today = zonedDate(now());
+  const todays = db.function.ratings.find((r) => r.date === today);
+  const last = lastCheckDate(db.function);
+  const scale = (a) => {
+    const v = fnDraft[a.id] ?? todays?.scores[a.id];
+    return `<div class="pain-scale" role="group" aria-label="${esc(a.name)}, 0 to 10">${Array.from({ length: 11 }, (_, i) => `<button type="button" data-action="fn-score" data-id="${esc(a.id)}" data-value="${i}" aria-pressed="${v === i}" aria-label="${i} out of 10">${i}</button>`).join('')}</div>`;
+  };
+  view.innerHTML = `
+    <header class="topbar"><a class="btn small" href="#/progress">← Progress</a></header>
+    <h1 class="ex-title">Everyday activities</h1>
+    <p class="muted small">Rate how well you can do each activity today: <strong>0</strong> = unable to do it, <strong>10</strong> = as well as before your neck problem.${last ? ` Last rated ${fmtDate(last)}.` : ''}</p>
+    ${acts.map((a) => `<section class="card"><div class="row"><h2 style="flex:1">${esc(a.name)}</h2><button class="btn small" data-action="fn-archive" data-id="${esc(a.id)}" aria-label="Stop tracking ${esc(a.name)}">Stop tracking</button></div>${scale(a)}</section>`).join('')}
+    ${acts.length ? '<button class="btn primary block" data-action="fn-save">Save today\'s ratings</button>' : ''}
+    ${acts.length < MAX_ACTIVITIES ? `<form id="fn-form" class="card stack"><label class="field" for="fn-name">Add an activity (${acts.length}/${MAX_ACTIVITIES})<input id="fn-name" name="name" required maxlength="120" placeholder="e.g. Turning to check traffic when driving"></label><p class="small muted">Other examples: sleeping through the night, an hour at the computer, lifting my child.</p><button class="btn small primary" type="submit">Add activity</button></form>` : ''}`;
+}
+
 let reportDays = 7;
 
 function openFlags() {
@@ -1032,7 +1068,7 @@ function openFlags() {
 
 function currentReport() {
   return buildReport({
-    sessions: db.sessions, programmes: activeProgrammes(), checkins: db.checkins, questions: db.questions, flags: openFlags(),
+    sessions: db.sessions, programmes: activeProgrammes(), checkins: db.checkins, fn: db.function, questions: db.questions, flags: openFlags(),
     exerciseName: (id) => exerciseOf(id)?.name || id, endDate: zonedDate(now()), days: reportDays, clinician: CLINICIAN.name,
   });
 }
@@ -1359,6 +1395,25 @@ const ACTIONS = {
     editingCheckin = true;
     render();
   },
+  'fn-score': (el) => {
+    fnDraft[el.dataset.id] = Number(el.dataset.value);
+    render();
+  },
+  'fn-save': () => {
+    const before = db.function;
+    db.function = recordRatings(db.function, zonedDate(now()), fnDraft, now());
+    if (db.function === before) return toast('Tap a score for at least one activity first.');
+    fnDraft = {};
+    save();
+    toast('Saved. See how it changes over the weeks on Progress.');
+    location.hash = '#/progress';
+  },
+  'fn-archive': (el) => {
+    if (!confirm('Stop tracking this activity? Its past ratings stay in your report.')) return;
+    db.function = archiveActivity(db.function, el.dataset.id);
+    save();
+    render();
+  },
   'report-days': (el) => {
     reportDays = Number(el.dataset.days);
     render();
@@ -1440,6 +1495,13 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('submit', (e) => {
+  if (e.target.id === 'fn-form') {
+    e.preventDefault();
+    db.function = addActivity(db.function, new FormData(e.target).get('name'), now());
+    save();
+    render();
+    return;
+  }
   if (e.target.id === 'question-form') {
     e.preventDefault();
     const text = new FormData(e.target).get('q').trim();

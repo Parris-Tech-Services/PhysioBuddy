@@ -2,6 +2,8 @@
 // synchronous, survives reloads); attached PDFs live in IndexedDB because they
 // are binary and larger. Everything stays on this device unless exported.
 
+import { emptyFunction, normaliseFunction } from './function.js';
+
 export const STORE_KEY = 'joshhealth.physio.v1';
 export const SCHEMA_VERSION = 1;
 
@@ -32,6 +34,7 @@ export function defaultState() {
     activeSession: null,
     questions: [],
     checkins: {},
+    function: emptyFunction(),
   };
 }
 
@@ -52,6 +55,7 @@ export function normaliseState(raw) {
     activeSession: isObj(raw.activeSession) && Array.isArray(raw.activeSession.items) ? raw.activeSession : null,
     questions: Array.isArray(raw.questions) ? raw.questions.filter((q) => isObj(q) && typeof q.text === 'string') : [],
     checkins: isObj(raw.checkins) ? raw.checkins : {},
+    function: normaliseFunction(raw.function),
   };
 }
 

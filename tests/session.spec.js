@@ -199,3 +199,23 @@ test('daily check-in is saved, summarised on Today and appears in the report', a
   await expect(page.locator('#report-text')).toContainText('- 1 check-in. Average neck discomfort 4/10 (first 4, latest 4)');
   await expect(page.locator('#report-text')).toContainText('- Headache days: 22 Oct 2026');
 });
+
+test('weekly activity check: set up, rate, see progress and report', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('link', { name: /Progress/ }).click();
+  await page.getByRole('link', { name: 'Set up activities' }).click();
+  await page.getByLabel(/Add an activity/).fill('Checking traffic when driving');
+  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('link', { name: /Today/ }).click();
+  await expect(page.getByText('Your weekly activity check is due')).toBeVisible();
+  await page.getByRole('link', { name: 'Rate now' }).click();
+  await page.getByRole('group', { name: 'Checking traffic when driving, 0 to 10' }).getByRole('button', { name: '3 out of 10' }).click();
+  await page.getByRole('button', { name: "Save today's ratings" }).click();
+  await expect(page.getByRole('heading', { name: 'Everyday activities' })).toBeVisible();
+  await expect(page.getByText('3/10', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: /Today/ }).click();
+  await expect(page.getByText('Your weekly activity check is due')).toHaveCount(0);
+  await page.getByRole('link', { name: /Progress/ }).click();
+  await page.getByRole('link', { name: 'Report for John' }).click();
+  await expect(page.locator('#report-text')).toContainText('- Checking traffic when driving: 3/10 on 22 Oct 2026');
+});
