@@ -162,3 +162,22 @@ test('optional per-exercise ratings are saved and shown on Progress', async ({ p
   await page.getByRole('link', { name: /Progress/ }).click();
   await expect(page.getByText('1× more discomfort than usual · 1× hard')).toBeVisible();
 });
+
+test('report for John includes questions, unclear items and copies to the clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await boot(page);
+  await page.getByRole('link', { name: /Progress/ }).click();
+  await page.getByRole('link', { name: 'Report for John' }).click();
+  await page.getByLabel('New question').fill('Can I keep going after day 4?');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  const report = page.locator('#report-text');
+  await expect(report).toContainText('Home exercise report for John Robins');
+  await expect(report).toContainText('- Can I keep going after day 4?');
+  await expect(report).toContainText('Mirror posture check (Acute neck recovery): No repetition count specified.');
+  await page.getByRole('button', { name: 'Last 14 days' }).click();
+  await expect(report).toContainText('Period: 9 Oct 2026 – 22 Oct 2026');
+  await page.getByRole('button', { name: 'Copy' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('Can I keep going after day 4?');
+  await page.getByRole('button', { name: 'Answered' }).click();
+  await expect(report).not.toContainText('Can I keep going after day 4?');
+});

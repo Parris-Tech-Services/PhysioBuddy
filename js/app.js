@@ -9,6 +9,7 @@ import { loadState, saveState, exportBackup, parseBackup, defaultState } from '.
 import { mountFigure, renderDiagram, FIGURES } from './figures.js';
 import { Coach, Listener, englishVoices } from './voice.js';
 import { COMMAND_HELP } from './commands.js';
+import { buildReport } from './report.js';
 import { addDoc, listDocs, getDoc, deleteDoc, clearDocs } from './docs.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -623,11 +624,11 @@ function route() {
 function render() {
   const { path, arg } = route();
   document.body.classList.toggle('in-session', path === 'session' && Boolean(S()));
-  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, settings: renderSettings, add: renderAdd, help: renderHelp };
+  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, settings: renderSettings, add: renderAdd, help: renderHelp };
   const fn = pages[path] || renderHome;
   if (path !== 'session') stopFigure();
   fn();
-  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings' }[path] || path);
+  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress' }[path] || path);
 }
 
 function stopFigure() {
@@ -968,7 +969,7 @@ function renderProgress() {
   const w = weeklySummary(db.sessions, today);
   const recent = db.sessions.slice().sort((a, b) => b.startedAt - a.startedAt).slice(0, 25);
   view.innerHTML = `
-    <header class="topbar"><h1>Progress</h1></header>
+    <header class="topbar"><h1>Progress</h1><a class="btn small primary" href="#/report">Report for John</a></header>
     <section class="card"><h2>This week</h2><p>${esc(weeklyMessage(w))}</p>
       <div class="row"><span class="chip">${w.sessions} ${w.sessions === 1 ? 'session' : 'sessions'}</span><span class="chip">${w.activeDays}/7 days</span>${w.averageCompletion != null ? `<span class="chip">${w.averageCompletion}% average completion</span>` : ''}${w.symptomReports ? `<span class="chip warn">${w.symptomReports} symptom reports</span>` : ''}</div></section>
     <section class="card"><h2>Sessions, last 14 days</h2>${barChart(series)}<p class="small muted">Solid = full session, outlined = partly done.</p></section>
@@ -989,6 +990,35 @@ function feedbackHtml(fromDate) {
     r.difficulty.easy && `${r.difficulty.easy}× easy`,
   ].filter(Boolean).join(' · ') || 'No ratings yet';
   return `<section class="card"><h2>How each exercise felt</h2><p class="small muted">Last 14 days, from the optional ratings after each exercise.</p><ul class="list">${rows.map((r) => `<li><strong>${esc(exerciseOf(r.exerciseId).name)}</strong> <span class="small muted">· done ${r.done}×</span><div class="small${r.discomfort.more ? '" style="color:var(--warn)' : ''}">${parts(r)}</div></li>`).join('')}</ul></section>`;
+}
+
+let reportDays = 7;
+
+function openFlags() {
+  return [...new Set(activeProgrammes().flatMap((p) => p.items.flatMap((it) => (it.flags || []).map((f) => `${exerciseOf(it.exerciseId)?.name || it.asPrescribed} (${p.title}): ${f}`))))];
+}
+
+function currentReport() {
+  return buildReport({
+    sessions: db.sessions, programmes: activeProgrammes(), checkins: db.checkins, questions: db.questions, flags: openFlags(),
+    exerciseName: (id) => exerciseOf(id)?.name || id, endDate: zonedDate(now()), days: reportDays, clinician: CLINICIAN.name,
+  });
+}
+
+function renderReport() {
+  const open = db.questions.filter((q) => !q.resolved);
+  view.innerHTML = `
+    <header class="topbar"><a class="btn small" href="#/progress">← Progress</a></header>
+    <h1 class="ex-title">Report for ${esc(CLINICIAN.name)}</h1>
+    <p class="muted small">A plain summary of what you recorded, to share before or at your next appointment.</p>
+    <div class="row" role="group" aria-label="Report period">${[7, 14, 30].map((d) => `<button class="chip" data-action="report-days" data-days="${d}" aria-pressed="${reportDays === d}">Last ${d} days</button>`).join('')}</div>
+    <section class="card"><h2>Your questions for John</h2>
+      <form id="question-form" class="row"><label class="sr-only" for="q-text">New question</label><input id="q-text" name="q" required maxlength="300" placeholder="e.g. Should I keep doing the rotation holds?" style="flex:1;min-height:48px;border-radius:12px;border:2px solid var(--line);padding:10px;background:var(--surface)"><button class="btn small primary" type="submit">Add</button></form>
+      ${open.length ? `<ul class="list">${open.map((q) => `<li class="row"><span style="flex:1">${esc(q.text)}</span><button class="btn small" data-action="resolve-question" data-id="${esc(q.id)}">Answered</button></li>`).join('')}</ul>` : '<p class="small muted">Items the prescriptions leave unclear are added to the report automatically.</p>'}
+    </section>
+    <section class="card"><h2>Preview</h2><pre class="report" id="report-text">${esc(currentReport())}</pre>
+      <div class="row"><button class="btn small primary" data-action="report-share">Share</button><button class="btn small" data-action="report-copy">Copy</button><button class="btn small" data-action="report-email">Email</button><button class="btn small" data-action="print">Print</button></div>
+    </section>`;
 }
 
 function calendarHtml(today) {
@@ -1284,6 +1314,39 @@ const ACTIONS = {
     refreshDocs(el.dataset.id);
   },
   'add-row': () => addRow(),
+  'report-days': (el) => {
+    reportDays = Number(el.dataset.days);
+    render();
+  },
+  'resolve-question': (el) => {
+    const q = db.questions.find((x) => x.id === el.dataset.id);
+    if (q) q.resolved = now();
+    save();
+    render();
+  },
+  'report-share': async () => {
+    const text = currentReport();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Home exercise report', text });
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    }
+    await ACTIONS['report-copy']();
+  },
+  'report-copy': async () => {
+    try {
+      await navigator.clipboard.writeText(currentReport());
+      toast('Report copied. Paste it into an email or message to John.');
+    } catch {
+      toast('Copy was blocked — select the preview text and copy it instead.');
+    }
+  },
+  'report-email': () => {
+    location.href = `mailto:?subject=${encodeURIComponent('Home exercise report')}&body=${encodeURIComponent(currentReport())}`;
+  },
 };
 
 document.addEventListener('click', (e) => {
@@ -1332,6 +1395,14 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('submit', (e) => {
+  if (e.target.id === 'question-form') {
+    e.preventDefault();
+    const text = new FormData(e.target).get('q').trim();
+    if (text) db.questions.push({ id: `q-${now()}`, text, createdAt: now(), resolved: null });
+    save();
+    render();
+    return;
+  }
   if (e.target.id === 'add-form') {
     e.preventDefault();
     saveAddForm(e.target);

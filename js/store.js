@@ -30,6 +30,8 @@ export function defaultState() {
     reminders: { enabled: false, times: ['06:30', '08:30', '16:30', '18:30', '20:30', '22:30'], snoozeUntil: null, lastNotifiedAt: null, dismissedSlots: {} },
     sessions: [],
     activeSession: null,
+    questions: [],
+    checkins: {},
   };
 }
 
@@ -48,6 +50,8 @@ export function normaliseState(raw) {
     reminders: { ...base.reminders, ...(isObj(raw.reminders) ? raw.reminders : {}) },
     sessions: Array.isArray(raw.sessions) ? raw.sessions.filter((s) => isObj(s) && typeof s.startedAt === 'number') : [],
     activeSession: isObj(raw.activeSession) && Array.isArray(raw.activeSession.items) ? raw.activeSession : null,
+    questions: Array.isArray(raw.questions) ? raw.questions.filter((q) => isObj(q) && typeof q.text === 'string') : [],
+    checkins: isObj(raw.checkins) ? raw.checkins : {},
   };
 }
 
