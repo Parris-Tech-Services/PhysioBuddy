@@ -10,6 +10,7 @@ import { mountFigure, renderDiagram, FIGURES } from './figures.js';
 import { Coach, Listener, englishVoices } from './voice.js';
 import { COMMAND_HELP } from './commands.js';
 import { buildReport } from './report.js';
+import { earnedMilestones, newMilestones } from './milestones.js';
 import { MAX_ACTIVITIES, activeActivities, addActivity, archiveActivity, recordRatings, isCheckDue, activitySummary, lastCheckDate } from './function.js';
 import { addDoc, listDocs, getDoc, deleteDoc, clearDocs } from './docs.js';
 
@@ -177,9 +178,13 @@ function dispatch(action) {
   render();
 }
 
+const milestoneInput = () => ({ sessions: db.sessions, checkins: db.checkins, times: db.reminders.times });
+
 function archiveSession() {
   const summary = summarize(S());
+  const before = earnedMilestones(milestoneInput());
   db.sessions = db.sessions.filter((x) => x.id !== summary.id).concat(summary);
+  summary.milestones = newMilestones(before, earnedMilestones(milestoneInput())).map((m) => m.text);
   releaseWakeLock();
 }
 
@@ -240,7 +245,8 @@ function handleEffects(effects) {
       clearTimeout(countTimer);
       buzz([40, 60, 40]);
       beep(784, 200);
-      coach.speak(`That's the whole session done. Well done for looking after yourself.${db.settings.askPain ? ' How is your discomfort now, from zero to ten?' : ''}`);
+      const reached = db.sessions.find((x) => x.id === s.id)?.milestones || [];
+      coach.speak(`That's the whole session done. Well done for looking after yourself.${reached.length ? ` New milestone: ${reached.join(', ')}.` : ''}${db.settings.askPain ? ' How is your discomfort now, from zero to ten?' : ''}`);
     } else if (e === 'sessionStopped') {
       clearTimeout(countTimer);
       coach.speak("Okay, we've stopped. That's completely fine.");
@@ -862,6 +868,7 @@ function renderFinished(s) {
     <h1>${stopped ? 'Session stopped' : 'Session complete'}</h1>
     <p class="muted">${stopped ? "Stopping when something doesn't feel right is the right call." : 'Well done for looking after yourself.'}</p></div>
     ${pre.length ? `<div class="banner warn">${pre.map(esc).join('<br>')}</div>` : ''}
+    ${sum.milestones && sum.milestones.length ? `<div class="banner info"><strong>🌱 New milestone${sum.milestones.length > 1 ? 's' : ''}:</strong> ${sum.milestones.map(esc).join(' · ')}</div>` : ''}
     <div class="card"><h2>Summary</h2><p>${sum.completed} completed, ${sum.partial} partly done, ${sum.skipped} skipped.</p><p class="muted small">${sum.repsDone} movements counted · ${Math.round(sum.holdSeconds)} seconds of holds.</p></div>
     ${db.settings.askPain ? `<div class="card"><h2>How is your discomfort now?</h2>${painScale('after', s.painAfter)}</div>` : ''}
     <button class="btn primary huge block" data-action="leave-session">Back to Today</button>
@@ -994,6 +1001,7 @@ function renderProgress() {
     <section class="card"><h2>Sessions, last 14 days</h2>${barChart(series)}<p class="small muted">Solid = full session, outlined = partly done.</p></section>
     <section class="card"><h2>Discomfort</h2>${painChart(series)}</section>
     <section class="card"><h2>Daily check-ins</h2>${checkinChart(checkinSeries(db.checkins, today, 14))}</section>
+    ${milestonesHtml()}
     ${functionCardHtml()}
     ${feedbackHtml(addDays(today, -13))}
     ${calendarHtml(today)}
@@ -1027,6 +1035,12 @@ function feedbackHtml(fromDate) {
 }
 
 // ---------- Weekly everyday-activity check ----------
+function milestonesHtml() {
+  const list = earnedMilestones(milestoneInput());
+  if (!list.length) return '';
+  return `<section class="card"><h2>Milestones</h2><ul class="list">${list.slice().reverse().map((m) => `<li>🌱 ${esc(m.text)} <span class="small muted">· ${fmtDate(m.date)}</span></li>`).join('')}</ul><p class="small muted">Milestones only add up — missing a session never takes one away.</p></section>`;
+}
+
 function functionDueHtml() {
   if (!isCheckDue(db.function, zonedDate(now()))) return '';
   return `<div class="banner info row"><span>Your weekly activity check is due — about a minute.</span><span class="spacer"></span><a class="btn small primary" href="#/function">Rate now</a></div>`;

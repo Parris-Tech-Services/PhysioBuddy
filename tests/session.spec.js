@@ -90,6 +90,7 @@ test('a full October neck session: holds, reload mid-hold, pause, resume, comple
   await expect(page.getByRole('heading', { name: 'Session complete' })).toBeVisible();
   await expect(page.getByText('5 completed, 0 partly done, 0 skipped.')).toBeVisible();
   await expect(page.getByText('50 movements counted · 330 seconds of holds.')).toBeVisible();
+  await expect(page.getByText('🌱 New milestone: First session done')).toBeVisible();
   await page.getByRole('button', { name: '2 out of 10' }).click();
   await page.getByRole('button', { name: 'Back to Today' }).click();
 
@@ -98,6 +99,7 @@ test('a full October neck session: holds, reload mid-hold, pause, resume, comple
   await page.getByRole('link', { name: /Progress/ }).click();
   await expect(page.getByText('1 session', { exact: true })).toBeVisible();
   await expect(page.getByText(/100% complete · discomfort 5 → 2/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Milestones' })).toBeVisible();
 });
 
 test('“That hurts” pauses, records the symptom and can stop the session', async ({ page }) => {
