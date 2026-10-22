@@ -5,7 +5,7 @@ const CACHE = 'physio-v1';
 const SHELL = [
   './index.html', './styles.css', './manifest.webmanifest',
   './js/app.js', './js/data.js', './js/session.js', './js/schedule.js', './js/progress.js', './js/store.js',
-  './js/figures.js', './js/report.js', './js/function.js', './js/milestones.js', './js/voice.js', './js/commands.js', './js/docs.js',
+  './js/figures.js', './js/report.js', './js/function.js', './js/milestones.js', './js/breathing.js', './js/voice.js', './js/commands.js', './js/docs.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ];
 

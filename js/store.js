@@ -24,6 +24,8 @@ export function defaultState() {
       sounds: true,
       haptics: true,
       askPain: true,
+      breathPattern: 'calm',
+      breathMinutes: 2,
     },
     activeProgrammeIds: ['acute-neck-2026-10-22'],
     customProgrammes: [],

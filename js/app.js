@@ -11,6 +11,7 @@ import { Coach, Listener, englishVoices } from './voice.js';
 import { COMMAND_HELP } from './commands.js';
 import { buildReport } from './report.js';
 import { earnedMilestones, newMilestones } from './milestones.js';
+import { PATTERNS, DURATIONS, breathAt, totalCycles, cycleSeconds } from './breathing.js';
 import { MAX_ACTIVITIES, activeActivities, addActivity, archiveActivity, recordRatings, isCheckDue, activitySummary, lastCheckDate } from './function.js';
 import { addDoc, listDocs, getDoc, deleteDoc, clearDocs } from './docs.js';
 
@@ -631,11 +632,12 @@ function route() {
 function render() {
   const { path, arg } = route();
   document.body.classList.toggle('in-session', path === 'session' && Boolean(S()));
-  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, function: renderFunction, settings: renderSettings, add: renderAdd, help: renderHelp };
+  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, function: renderFunction, breathe: renderBreathe, settings: renderSettings, add: renderAdd, help: renderHelp };
   const fn = pages[path] || renderHome;
   if (path !== 'session') stopFigure();
+  if (path !== 'breathe') stopBreathing();
   fn();
-  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress', function: 'progress' }[path] || path);
+  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress', function: 'progress', breathe: 'home' }[path] || path);
 }
 
 function stopFigure() {
@@ -667,6 +669,7 @@ function renderHome() {
   view.innerHTML = `
     <header class="topbar"><div><h1>PhysioBuddy</h1><div class="sub">${new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })}</div></div>${micChip()}</header>
     ${storageBanner()}${due}${resume}${cards}${checkinHtml()}${functionDueHtml()}
+    <a class="btn soft block" href="#/breathe">🫁 Calm breathing break (optional)</a>
     <p class="small muted">This app supports ${esc(CLINICIAN.name)}'s prescribed exercises. It does not replace his assessment. If something feels wrong, stop and contact him.</p>`;
 }
 
@@ -872,6 +875,7 @@ function renderFinished(s) {
     <div class="card"><h2>Summary</h2><p>${sum.completed} completed, ${sum.partial} partly done, ${sum.skipped} skipped.</p><p class="muted small">${sum.repsDone} movements counted · ${Math.round(sum.holdSeconds)} seconds of holds.</p></div>
     ${db.settings.askPain ? `<div class="card"><h2>How is your discomfort now?</h2>${painScale('after', s.painAfter)}</div>` : ''}
     <button class="btn primary huge block" data-action="leave-session">Back to Today</button>
+    <a class="btn soft block" style="margin-top:10px" href="#/breathe">🫁 Calm breathing break (optional)</a>
     <div class="caption" id="caption" style="margin-top:12px">${esc(caption)}</div>`;
 }
 
@@ -1039,6 +1043,58 @@ function milestonesHtml() {
   const list = earnedMilestones(milestoneInput());
   if (!list.length) return '';
   return `<section class="card"><h2>Milestones</h2><ul class="list">${list.slice().reverse().map((m) => `<li>🌱 ${esc(m.text)} <span class="small muted">· ${fmtDate(m.date)}</span></li>`).join('')}</ul><p class="small muted">Milestones only add up — missing a session never takes one away.</p></section>`;
+}
+
+// ---------- Optional breathing break ----------
+let breath = null;
+
+function stopBreathing() {
+  if (breath) cancelAnimationFrame(breath.raf);
+  breath = null;
+}
+
+function renderBreathe() {
+  const s = db.settings;
+  const p = PATTERNS[s.breathPattern] || PATTERNS.calm;
+  view.innerHTML = `
+    <header class="topbar"><a class="btn small" href="#/home">← Today</a></header>
+    <h1 class="ex-title">Calm breathing</h1>
+    <p class="small muted">General relaxation, not part of John's prescription. Breathe gently through your nose if comfortable; stop if you feel dizzy.</p>
+    <div class="row" role="group" aria-label="Pattern">${Object.entries(PATTERNS).map(([k, v]) => `<button class="chip" data-action="breath-pattern" data-key="${k}" aria-pressed="${s.breathPattern === k}">${v.label}</button>`).join('')}</div>
+    <div class="row" role="group" aria-label="Length" style="margin-top:8px">${DURATIONS.map((m) => `<button class="chip" data-action="breath-minutes" data-min="${m}" aria-pressed="${s.breathMinutes === m}">${m} min</button>`).join('')}</div>
+    <div class="breath-stage"><div class="breath-circle" id="breath-circle"></div><div class="breath-text"><div id="breath-caption" aria-live="polite">Ready when you are</div><div class="small muted" id="breath-count">${totalCycles(p, s.breathMinutes)} breaths · ${s.breathMinutes} min</div></div></div>
+    <button class="btn primary huge block" data-action="breath-toggle" id="breath-btn">▶ Start</button>`;
+  if (breath && breath.running) startBreathLoop();
+}
+
+function startBreathLoop() {
+  const p = PATTERNS[db.settings.breathPattern] || PATTERNS.calm;
+  const total = totalCycles(p, db.settings.breathMinutes);
+  const end = total * cycleSeconds(p) * 1000;
+  $('#breath-btn').textContent = '❚❚ Stop';
+  const frame = () => {
+    const el = $('#breath-circle');
+    if (!breath || !el) return;
+    const ms = performance.now() - breath.t0;
+    if (ms >= end) {
+      breath.running = false;
+      $('#breath-caption').textContent = 'Done. Nice and calm.';
+      $('#breath-btn').textContent = '▶ Again';
+      el.style.transform = 'scale(0.45)';
+      coach.speak('Done. Nice and calm.', { remember: false });
+      return;
+    }
+    const b = breathAt(p, ms);
+    el.style.transform = `scale(${0.45 + b.size * 0.55})`;
+    $('#breath-caption').textContent = `${b.caption} · ${b.secondsLeft}`;
+    $('#breath-count').textContent = `Breath ${b.cycle} of ${total}`;
+    if (b.phase !== breath.phase) {
+      breath.phase = b.phase;
+      if (b.cycle <= 2 || b.cycle % 4 === 0) coach.speak(b.caption, { remember: false });
+    }
+    breath.raf = requestAnimationFrame(frame);
+  };
+  breath.raf = requestAnimationFrame(frame);
 }
 
 function functionDueHtml() {
@@ -1426,6 +1482,28 @@ const ACTIONS = {
     if (!confirm('Stop tracking this activity? Its past ratings stay in your report.')) return;
     db.function = archiveActivity(db.function, el.dataset.id);
     save();
+    render();
+  },
+  'breath-toggle': () => {
+    if (breath && breath.running) {
+      stopBreathing();
+      coach.cancel();
+      render();
+      return;
+    }
+    breath = { running: true, t0: performance.now(), phase: null, raf: 0 };
+    startBreathLoop();
+  },
+  'breath-pattern': (el) => {
+    db.settings.breathPattern = el.dataset.key;
+    save();
+    stopBreathing();
+    render();
+  },
+  'breath-minutes': (el) => {
+    db.settings.breathMinutes = Number(el.dataset.min);
+    save();
+    stopBreathing();
     render();
   },
   'report-days': (el) => {

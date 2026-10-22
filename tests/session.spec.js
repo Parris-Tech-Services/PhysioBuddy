@@ -221,3 +221,18 @@ test('weekly activity check: set up, rate, see progress and report', async ({ pa
   await page.getByRole('link', { name: 'Report for John' }).click();
   await expect(page.locator('#report-text')).toContainText('- Checking traffic when driving: 3/10 on 22 Oct 2026');
 });
+
+test('optional breathing break guides breaths and finishes', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('link', { name: '🫁 Calm breathing break (optional)' }).click();
+  await expect(page.getByText("not part of John's prescription")).toBeVisible();
+  await page.getByRole('button', { name: '1 min' }).click();
+  await expect(page.getByText('6 breaths · 1 min')).toBeVisible();
+  await page.getByRole('button', { name: '▶ Start' }).click();
+  await page.clock.runFor(1000);
+  await expect(page.locator('#breath-caption')).toHaveText('Breathe in · 3');
+  await page.clock.runFor(4000);
+  await expect(page.locator('#breath-caption')).toHaveText(/Breathe out · \d/);
+  await page.clock.runFor(60000);
+  await expect(page.locator('#breath-caption')).toHaveText('Done. Nice and calm.');
+});
