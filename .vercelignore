@@ -1,0 +1,11 @@
+node_modules
+test
+tests
+scripts
+docs
+playwright.config.js
+package.json
+package-lock.json
+codingprinciples.md
+AGENTS.md
+CLAUDE.md

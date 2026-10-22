@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Guided home exercises from your physiotherapy prescriptions, with voice coaching, timers and progress tracking.">
+  <meta name="theme-color" content="#1f7a68" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1716" media="(prefers-color-scheme: dark)">
+  <title>PhysioBuddy</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="sr-only" href="#view">Skip to content</a>
+  <main class="app" id="view" tabindex="-1"><p style="padding:24px 0">Loading your exercises…</p></main>
+  <noscript><p class="app">This app needs JavaScript turned on.</p></noscript>
+
+  <nav class="nav" aria-label="Main">
+    <a href="#/home" data-route="home"><span class="ico" aria-hidden="true">🏠</span>Today</a>
+    <a href="#/library" data-route="library"><span class="ico" aria-hidden="true">📚</span>Library</a>
+    <a href="#/progress" data-route="progress"><span class="ico" aria-hidden="true">📈</span>Progress</a>
+    <a href="#/settings" data-route="settings"><span class="ico" aria-hidden="true">⚙️</span>Settings</a>
+  </nav>
+
+  <dialog id="hurt" aria-labelledby="hurt-title">
+    <h2 id="hurt-title">Let's stop for a moment</h2>
+    <p>Your session is paused. What would you like to do?</p>
+    <div id="hurt-precautions" class="banner warn small"></div>
+    <label class="switch"><span>It triggered a headache</span><input type="checkbox" id="hurt-headache"></label>
+    <div class="actions">
+      <button class="btn stop" data-action="hurt-stop">Stop the session</button>
+      <button class="btn" data-action="hurt-skip">Skip this exercise</button>
+      <button class="btn primary" data-action="hurt-continue">Carry on gently</button>
+    </div>
+    <p class="small muted">If an exercise triggers a headache or significant pain, stop and contact John Robins at Activate Physiotherapy.</p>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

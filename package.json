@@ -1,0 +1,16 @@
+{
+  "name": "physiobuddy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Guided home physiotherapy exercises with voice coaching, timers and progress tracking.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test test/*.test.js",
+    "test:browser": "playwright test",
+    "verify": "npm test && npm run test:browser"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}
