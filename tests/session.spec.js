@@ -181,3 +181,21 @@ test('report for John includes questions, unclear items and copies to the clipbo
   await page.getByRole('button', { name: 'Answered' }).click();
   await expect(report).not.toContainText('Can I keep going after day 4?');
 });
+
+test('daily check-in is saved, summarised on Today and appears in the report', async ({ page }) => {
+  await boot(page);
+  const card = page.locator('section', { has: page.getByRole('heading', { name: 'Quick check-in' }) });
+  await card.getByRole('button', { name: '6 out of 10' }).click();
+  await card.getByRole('button', { name: 'Yes' }).click();
+  await card.getByRole('button', { name: 'Poorly' }).click();
+  await expect(page.getByText('✓ Checked in today: neck 6/10 · headache · slept poor')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('✓ Checked in today: neck 6/10 · headache · slept poor')).toBeVisible();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: '4 out of 10' }).click();
+  await page.getByRole('link', { name: /Progress/ }).click();
+  await expect(page.getByRole('img', { name: /Daily neck discomfort and headache days/ })).toBeVisible();
+  await page.getByRole('link', { name: 'Report for John' }).click();
+  await expect(page.locator('#report-text')).toContainText('- 1 check-in. Average neck discomfort 4/10 (first 4, latest 4)');
+  await expect(page.locator('#report-text')).toContainText('- Headache days: 22 Oct 2026');
+});

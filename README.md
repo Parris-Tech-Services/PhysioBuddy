@@ -35,6 +35,13 @@ tests, scripts and docs out of the deployment.
   verbatim instructions, dose history per exercise, dose-change flags,
   clarification flags, PDF attachments (stored on the device only) and a link
   to the original email in Gmail.
+- **After each exercise**: optional one-tap discomfort and difficulty
+  ratings; "more than usual" surfaces the stop-and-contact-John precaution.
+- **Daily check-in** on Today: neck discomfort, headache, sleep — trended on
+  Progress.
+- **Report for John**: plain-text summary of the last 7/14/30 days (sessions,
+  discomfort, symptoms, ratings, check-ins, questions and unclear prescription
+  items) to share, copy, email or print.
 - **Progress**: weekly summary, 14-day chart, discomfort trend, monthly
   calendar, history, CSV export and print.
 - **Reminders**: configurable times in Australia/Sydney; in-app and
@@ -62,7 +69,8 @@ tests, scripts and docs out of the deployment.
 | `js/session.js` | Pure session state machine (clock injected) |
 | `js/commands.js` | Spoken-phrase → command parser |
 | `js/schedule.js` | Sydney time, reminder slots, programme windows, .ics |
-| `js/progress.js` | Summaries, charts data, CSV |
+| `js/progress.js` | Summaries, charts data, CSV, ratings and check-ins |
+| `js/report.js` | Plain-text report for the physiotherapist |
 | `js/store.js` | Versioned localStorage state, backup/restore |
 | `js/docs.js` | PDF attachments in IndexedDB |
 | `js/figures.js` | SVG illustrations and animation |

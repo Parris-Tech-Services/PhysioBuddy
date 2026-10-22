@@ -30,7 +30,7 @@ test('report summarises sessions, discomfort, symptoms, ratings and questions', 
     flags: ['Rocking movements (Neck and lumbar recovery): Needs clarification'],
   });
   assert.match(text, /^Home exercise report for John Robins\nPeriod: 18 Oct 2026 – 24 Oct 2026/);
-  assert.match(text, /- Acute neck recovery \(prescribed 22 Oct 2026; About every two hours while awake, including before bed and if awake overnight\): 3 sessions on 2 of 7 days/);
+  assert.match(text, /- Acute neck recovery \(prescribed 22 Oct 2026; about every two hours while awake, including before bed and if awake overnight\): 3 sessions on 2 of 7 days/);
   assert.match(text, /- 3 total: 1 complete, 0 partly done, 1 stopped early, 1 marked done from a reminder \(not tracked\)/);
   assert.match(text, /Average before a session: 5\.5\/10, after: 4\.5\/10 \(2 sessions\)/);
   assert.match(text, /- 2 check-ins\. Average neck discomfort 5\/10 \(first 6, latest 4\)/);

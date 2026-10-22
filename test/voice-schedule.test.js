@@ -123,3 +123,18 @@ test('exercise feedback counts ratings per exercise within the window', async ()
   assert.equal(rows.length, 1);
   assert.deepEqual(rows[0], { exerciseId: 'a', done: 2, discomfort: { none: 0, mild: 0, more: 1 }, difficulty: { easy: 1, ok: 0, hard: 1 } });
 });
+
+test('daily check-ins validate answers and build a day-by-day trend', async () => {
+  const { updateCheckin, checkinSeries } = await import('../js/progress.js');
+  let c = {};
+  c = updateCheckin(c, '2026-10-22', 'pain', 6, 1);
+  c = updateCheckin(c, '2026-10-22', 'headache', true, 2);
+  c = updateCheckin(c, '2026-10-22', 'sleep', 'poor', 3);
+  c = updateCheckin(c, '2026-10-22', 'pain', 11, 4);
+  c = updateCheckin(c, '2026-10-22', 'sleep', 'great', 5);
+  c = updateCheckin(c, '2026-10-24', 'pain', 3, 6);
+  assert.deepEqual(c['2026-10-22'], { pain: 6, headache: true, sleep: 'poor', at: 3 });
+  const series = checkinSeries(c, '2026-10-24', 3);
+  assert.deepEqual(series.map((d) => d.pain), [6, null, 3]);
+  assert.deepEqual(series.map((d) => d.headache), [true, false, false]);
+});

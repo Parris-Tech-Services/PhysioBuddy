@@ -20,7 +20,7 @@ function programmeLines(sessions, programmes, w) {
   return programmes.map((p) => {
     const list = sessions.filter((s) => s.programmeId === p.id);
     const days = new Set(list.map((s) => s.day)).size;
-    return `- ${p.title} (prescribed ${fmt(p.prescribedOn)}${p.frequency ? `; ${p.frequency.replace(/\.$/, '')}` : ''}): ${list.length} ${list.length === 1 ? 'session' : 'sessions'} on ${days} of ${daysBetween(w.from, w.to) + 1} days`;
+    return `- ${p.title} (prescribed ${fmt(p.prescribedOn)}${p.frequency ? `; ${p.frequency.charAt(0).toLowerCase()}${p.frequency.slice(1).replace(/\.$/, '')}` : ''}): ${list.length} ${list.length === 1 ? 'session' : 'sessions'} on ${days} of ${daysBetween(w.from, w.to) + 1} days`;
   });
 }
 
@@ -36,7 +36,7 @@ function checkinLines(checkins, w) {
   const pains = days.map(([, c]) => c.pain).filter((x) => typeof x === 'number');
   const headaches = days.filter(([, c]) => c.headache === true).map(([d]) => fmt(d));
   const sleep = days.map(([, c]) => c.sleep).filter(Boolean);
-  const lines = [`- ${days.length} check-ins. Average neck discomfort ${avg(pains) ?? '–'}/10 (first ${pains[0] ?? '–'}, latest ${pains[pains.length - 1] ?? '–'})`];
+  const lines = [`- ${days.length} ${days.length === 1 ? 'check-in' : 'check-ins'}. Average neck discomfort ${avg(pains) ?? '–'}/10 (first ${pains[0] ?? '–'}, latest ${pains[pains.length - 1] ?? '–'})`];
   lines.push(`- Headache days: ${headaches.length ? headaches.join(', ') : 'none reported'}`);
   if (sleep.length) lines.push(`- Sleep: ${['poor', 'ok', 'good'].map((k) => `${sleep.filter((x) => x === k).length} ${k}`).join(', ')}`);
   return lines;

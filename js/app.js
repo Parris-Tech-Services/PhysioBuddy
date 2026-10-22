@@ -4,7 +4,7 @@
 import { PROGRAMMES, EXERCISES, AREAS, CLINICIAN, getProgramme, getExercise, prescriptionHistory, doseChanges, describeDose } from './data.js';
 import { createSession, apply, recover, summarize, currentItem, currentUnit, holdRemainingMs, remainingText } from './session.js';
 import { TZ, zonedDate, programmeStatus, nextReminder, remindersForDate, slotFor, formatTime12, buildIcs, icsUtc, addDays, sortTimes } from './schedule.js';
-import { dailySeries, weeklySummary, weeklyMessage, toCsv, exerciseFeedback } from './progress.js';
+import { dailySeries, weeklySummary, weeklyMessage, toCsv, exerciseFeedback, checkinSeries, updateCheckin } from './progress.js';
 import { loadState, saveState, exportBackup, parseBackup, defaultState } from './store.js';
 import { mountFigure, renderDiagram, FIGURES } from './figures.js';
 import { Coach, Listener, englishVoices } from './voice.js';
@@ -659,8 +659,26 @@ function renderHome() {
   const cards = active.map(programmeCard).join('') || `<div class="card"><h2>No programme active</h2><p class="muted">Choose a programme from the Library, or add new instructions from John.</p><a class="btn primary" href="#/library">Open Library</a></div>`;
   view.innerHTML = `
     <header class="topbar"><div><h1>PhysioBuddy</h1><div class="sub">${new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })}</div></div>${micChip()}</header>
-    ${storageBanner()}${due}${resume}${cards}
+    ${storageBanner()}${due}${resume}${cards}${checkinHtml()}
     <p class="small muted">This app supports ${esc(CLINICIAN.name)}'s prescribed exercises. It does not replace his assessment. If something feels wrong, stop and contact him.</p>`;
+}
+
+let editingCheckin = false;
+
+function checkinHtml() {
+  const today = zonedDate(now());
+  const c = db.checkins[today] || {};
+  const complete = typeof c.pain === 'number' && typeof c.headache === 'boolean' && c.sleep;
+  if (complete && !editingCheckin) {
+    return `<div class="card row"><span>✓ Checked in today: neck ${c.pain}/10 · ${c.headache ? 'headache' : 'no headache'} · slept ${c.sleep}</span><span class="spacer"></span><button class="btn small" data-action="edit-checkin">Edit</button></div>`;
+  }
+  const choice = (field, value, label) => `<button class="chip" data-action="checkin" data-field="${field}" data-value="${value}" aria-pressed="${c[field] === value}">${label}</button>`;
+  const pain = Array.from({ length: 11 }, (_, i) => `<button type="button" data-action="checkin" data-field="pain" data-value="${i}" aria-pressed="${c.pain === i}" aria-label="${i} out of 10">${i}</button>`).join('');
+  return `<section class="card stack" aria-labelledby="checkin-h"><h2 id="checkin-h">Quick check-in</h2>
+    <div><strong>Neck discomfort right now</strong><div class="pain-scale" role="group" aria-label="Neck discomfort from 0 to 10">${pain}</div></div>
+    <div><strong>Headache today?</strong><div class="row">${choice('headache', 'true', 'Yes')}${choice('headache', 'false', 'No')}</div></div>
+    <div><strong>How did you sleep?</strong><div class="row">${choice('sleep', 'poor', 'Poorly')}${choice('sleep', 'ok', 'OK')}${choice('sleep', 'good', 'Well')}</div></div>
+    <p class="small muted">Optional — takes a few seconds and helps you and John see trends.</p></section>`;
 }
 
 function programmeCard(p) {
@@ -974,10 +992,24 @@ function renderProgress() {
       <div class="row"><span class="chip">${w.sessions} ${w.sessions === 1 ? 'session' : 'sessions'}</span><span class="chip">${w.activeDays}/7 days</span>${w.averageCompletion != null ? `<span class="chip">${w.averageCompletion}% average completion</span>` : ''}${w.symptomReports ? `<span class="chip warn">${w.symptomReports} symptom reports</span>` : ''}</div></section>
     <section class="card"><h2>Sessions, last 14 days</h2>${barChart(series)}<p class="small muted">Solid = full session, outlined = partly done.</p></section>
     <section class="card"><h2>Discomfort</h2>${painChart(series)}</section>
+    <section class="card"><h2>Daily check-ins</h2>${checkinChart(checkinSeries(db.checkins, today, 14))}</section>
     ${feedbackHtml(addDays(today, -13))}
     ${calendarHtml(today)}
     <section class="card"><h2>History</h2>${recent.length ? `<ul class="list">${recent.map(historyRow).join('')}</ul>` : '<p class="muted">Your sessions will appear here.</p>'}
       <div class="row"><button class="btn small" data-action="export-csv">Export CSV</button><button class="btn small" data-action="print">Print report</button></div></section>`;
+}
+
+function checkinChart(series) {
+  const w = 320;
+  const h = 120;
+  const x = (i) => 8 + i * ((w - 16) / (series.length - 1 || 1));
+  const y = (v) => 8 + (1 - v / 10) * (h - 30);
+  const pts = series.map((d, i) => (d.pain == null ? null : [x(i), y(d.pain)])).filter(Boolean);
+  if (!pts.length && !series.some((d) => d.headache)) return '<p class="small muted">Use the quick check-in on Today to see your neck discomfort and headache days here.</p>';
+  const line = pts.length > 1 ? `<polyline class="line" points="${pts.map((p) => p.join(',')).join(' ')}"/>` : '';
+  const dots = pts.map((p) => `<circle class="dot" cx="${p[0]}" cy="${p[1]}" r="3.5"/>`).join('');
+  const heads = series.map((d, i) => (d.headache ? `<text x="${x(i)}" y="${h - 4}" text-anchor="middle" font-size="11">●</text>` : '')).join('');
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Daily neck discomfort and headache days, last ${series.length} days"><text class="axis" x="0" y="10">10</text><text class="axis" x="0" y="${h - 20}">0</text>${line}${dots}<g class="headache-marks">${heads}</g></svg><p class="small"><span style="color:var(--accent)">●</span> neck discomfort &nbsp; <span style="color:var(--warn)">●</span> headache day</p>`;
 }
 
 function feedbackHtml(fromDate) {
@@ -1314,6 +1346,19 @@ const ACTIONS = {
     refreshDocs(el.dataset.id);
   },
   'add-row': () => addRow(),
+  checkin: (el) => {
+    const raw = el.dataset.value;
+    const value = el.dataset.field === 'pain' ? Number(raw) : el.dataset.field === 'headache' ? raw === 'true' : raw;
+    db.checkins = updateCheckin(db.checkins, zonedDate(now()), el.dataset.field, value, now());
+    const c = db.checkins[zonedDate(now())];
+    if (typeof c.pain === 'number' && typeof c.headache === 'boolean' && c.sleep) editingCheckin = false;
+    save();
+    render();
+  },
+  'edit-checkin': () => {
+    editingCheckin = true;
+    render();
+  },
   'report-days': (el) => {
     reportDays = Number(el.dataset.days);
     render();

@@ -87,3 +87,27 @@ export function exerciseFeedback(sessions, fromDate, tz = TZ) {
   }
   return [...out.values()];
 }
+
+// One point per day for the check-in trend; days without a check-in are null.
+export function checkinSeries(checkins, endDate, days) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = addDays(endDate, -i);
+    const c = (checkins || {})[date] || {};
+    out.push({ date, pain: typeof c.pain === 'number' ? c.pain : null, headache: c.headache === true, sleep: c.sleep || null });
+  }
+  return out;
+}
+
+export const SLEEP_OPTIONS = Object.freeze(['poor', 'ok', 'good']);
+
+// Merge one answer into a day's check-in, ignoring invalid values.
+export function updateCheckin(checkins, date, field, value, now) {
+  const valid = {
+    pain: Number.isInteger(value) && value >= 0 && value <= 10,
+    headache: typeof value === 'boolean',
+    sleep: SLEEP_OPTIONS.includes(value),
+  }[field];
+  if (!valid) return checkins;
+  return { ...checkins, [date]: { ...(checkins[date] || {}), [field]: value, at: now } };
+}
