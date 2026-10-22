@@ -224,7 +224,7 @@ test('weekly activity check: set up, rate, see progress and report', async ({ pa
 
 test('optional breathing break guides breaths and finishes', async ({ page }) => {
   await boot(page);
-  await page.getByRole('link', { name: '🫁 Calm breathing break (optional)' }).click();
+  await page.getByRole('link', { name: '🫁 Breathe' }).click();
   await expect(page.getByText("not part of John's prescription")).toBeVisible();
   await page.getByRole('button', { name: '1 min' }).click();
   await expect(page.getByText('6 breaths · 1 min')).toBeVisible();
@@ -235,4 +235,38 @@ test('optional breathing break guides breaths and finishes', async ({ page }) =>
   await expect(page.locator('#breath-caption')).toHaveText(/Breathe out · \d/);
   await page.clock.runFor(60000);
   await expect(page.locator('#breath-caption')).toHaveText('Done. Nice and calm.');
+});
+
+test('message John: symptom draft after stopping, contacts saved locally, email draft logged', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await boot(page);
+  await page.getByRole('button', { name: '▶ Start My Exercises' }).click();
+  await page.getByRole('button', { name: '▶ Start' }).click();
+  await page.getByRole('button', { name: "I'm ready" }).click();
+  await page.getByRole('button', { name: 'That hurts' }).click();
+  await page.getByRole('button', { name: 'Stop the session' }).click();
+  await page.getByRole('link', { name: '✉️ Message John about this' }).click();
+  await page.getByLabel("John's email").fill('physio@example.test');
+  await page.getByLabel('Your name (to sign messages)').fill('Josh');
+  await page.getByRole('button', { name: 'Save details' }).click();
+  const body = page.locator('#msg-body');
+  await expect(body).toHaveValue(/I had some symptoms while doing my home exercises:\n- .*: pain during Active neck rotation/);
+  await expect(body).toHaveValue(/Thanks,\nJosh\n$/);
+  await page.getByRole('button', { name: 'Copy' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('Symptoms during my home exercises');
+  await page.evaluate(() => { window.__nav = []; });
+  await page.getByRole('button', { name: '✉️ Open in email' }).click();
+  const state = await page.evaluate(() => JSON.parse(localStorage.getItem('joshhealth.physio.v1')));
+  expect(state.contacts.johnEmail).toBe('physio@example.test');
+  expect(state.messages.at(-1)).toMatchObject({ channel: 'email', template: 'symptom' });
+});
+
+test('learn page: precautions, saved advice and trusted links', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('link', { name: '📖 Learn' }).click();
+  await expect(page.getByText('Active rotation only: turn to about 4–5/10 discomfort, no further.')).toBeVisible();
+  await page.getByLabel("John's advice (saved on this phone only)").first().fill('Keep movements gentle.');
+  await page.getByRole('button', { name: 'Save advice' }).first().click();
+  await expect(page.locator('blockquote.advice')).toHaveText('Keep movements gentle.');
+  await expect(page.getByRole('link', { name: 'Neck pain' })).toHaveAttribute('href', 'https://www.healthdirect.gov.au/amp/article/neck-pain');
 });

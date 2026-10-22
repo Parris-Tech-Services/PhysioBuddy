@@ -46,6 +46,12 @@ tests, scripts and docs out of the deployment.
   reminder slots, check-ins) — no streaks, nothing lost for missed days.
 - **Calm breathing break** (optional, labelled as not prescribed): guided
   1–3 minute paced breathing with an animated circle and voice cues.
+- **Learn**: John's precautions, his advice pasted in his own words (kept on
+  the phone only — PhysioBuddy writes no medical advice), the exercises, and
+  links to healthdirect pages.
+- **Message John**: templated drafts (symptoms, question, update,
+  appointment) that open in the phone's email/SMS app, optionally with the
+  progress report; call/text the clinic. Contact details stay on the phone.
 - **Report for John**: plain-text summary of the last 7/14/30 days (sessions,
   discomfort, symptoms, ratings, check-ins, questions and unclear prescription
   items) to share, copy, email or print.
@@ -80,6 +86,7 @@ tests, scripts and docs out of the deployment.
 | `js/function.js` | Weekly everyday-activity check |
 | `js/milestones.js` | Cumulative milestones |
 | `js/breathing.js` | Paced-breathing timing |
+| `js/messages.js` | Message drafts and mailto/sms links |
 | `js/report.js` | Plain-text report for the physiotherapist |
 | `js/store.js` | Versioned localStorage state, backup/restore |
 | `js/docs.js` | PDF attachments in IndexedDB |

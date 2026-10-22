@@ -37,6 +37,11 @@ export function defaultState() {
     questions: [],
     checkins: {},
     function: emptyFunction(),
+    // Personal notes kept on this device only: advice copied from John's
+    // summaries (by programme id) and contact details for messages.
+    advice: {},
+    contacts: { johnEmail: '', clinicEmail: '', clinicPhone: '', myName: '' },
+    messages: [],
   };
 }
 
@@ -58,6 +63,9 @@ export function normaliseState(raw) {
     questions: Array.isArray(raw.questions) ? raw.questions.filter((q) => isObj(q) && typeof q.text === 'string') : [],
     checkins: isObj(raw.checkins) ? raw.checkins : {},
     function: normaliseFunction(raw.function),
+    advice: isObj(raw.advice) ? raw.advice : {},
+    contacts: { ...base.contacts, ...(isObj(raw.contacts) ? raw.contacts : {}) },
+    messages: Array.isArray(raw.messages) ? raw.messages.filter(isObj) : [],
   };
 }
 

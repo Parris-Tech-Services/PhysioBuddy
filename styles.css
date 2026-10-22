@@ -262,3 +262,4 @@ pre.report { white-space: pre-wrap; word-break: break-word; font: 0.85rem/1.5 ui
 .breath-stage { position: relative; display: grid; place-items: center; height: min(62vw, 300px); margin: 18px 0; }
 .breath-circle { position: absolute; width: min(62vw, 300px); height: min(62vw, 300px); border-radius: 50%; background: radial-gradient(circle at 40% 35%, var(--primary-soft), var(--primary)); opacity: 0.85; transform: scale(0.45); will-change: transform; }
 .breath-text { position: relative; text-align: center; font-weight: 700; font-size: 1.25rem; color: var(--text); background: color-mix(in srgb, var(--surface) 70%, transparent); padding: 8px 14px; border-radius: 14px; }
+blockquote.advice { margin: 8px 0; padding: 10px 14px; border-left: 4px solid var(--primary); background: var(--surface-2); border-radius: 0 12px 12px 0; }

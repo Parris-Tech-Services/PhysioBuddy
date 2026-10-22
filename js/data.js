@@ -9,6 +9,14 @@ export const CLINICIAN = Object.freeze({
   practice: 'Activate Physiotherapy, Dubbo NSW',
 });
 
+// Trusted public reading. Links only — the app does not paraphrase them.
+export const READING = Object.freeze([
+  { area: 'neck', title: 'Neck pain', url: 'https://www.healthdirect.gov.au/amp/article/neck-pain', source: 'healthdirect (Australian Government)' },
+  { area: 'headaches', title: 'Headaches', url: 'https://www.healthdirect.gov.au/headaches', source: 'healthdirect (Australian Government)' },
+  { area: 'headaches', title: 'Tension headache', url: 'https://www.healthdirect.gov.au/tension-headache', source: 'healthdirect (Australian Government)' },
+  { area: 'back', title: 'Low back pain', url: 'https://www.healthdirect.gov.au/low-back-pain', source: 'healthdirect (Australian Government)' },
+]);
+
 // Body areas used to organise the Exercise Library.
 export const AREAS = Object.freeze({
   neck: 'Neck',

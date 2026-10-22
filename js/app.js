@@ -1,7 +1,7 @@
 // UI shell: routes, rendering and wiring between the session engine, the voice
 // coach, reminders and storage. Clinical facts come only from data.js (or
 // programmes the person entered); session rules come only from session.js.
-import { PROGRAMMES, EXERCISES, AREAS, CLINICIAN, getProgramme, getExercise, prescriptionHistory, doseChanges, describeDose } from './data.js';
+import { PROGRAMMES, EXERCISES, AREAS, CLINICIAN, READING, getProgramme, getExercise, prescriptionHistory, doseChanges, describeDose } from './data.js';
 import { createSession, apply, recover, summarize, currentItem, currentUnit, holdRemainingMs, remainingText } from './session.js';
 import { TZ, zonedDate, programmeStatus, nextReminder, remindersForDate, slotFor, formatTime12, buildIcs, icsUtc, addDays, sortTimes } from './schedule.js';
 import { dailySeries, weeklySummary, weeklyMessage, toCsv, exerciseFeedback, checkinSeries, updateCheckin } from './progress.js';
@@ -12,6 +12,7 @@ import { COMMAND_HELP } from './commands.js';
 import { buildReport } from './report.js';
 import { earnedMilestones, newMilestones } from './milestones.js';
 import { PATTERNS, DURATIONS, breathAt, totalCycles, cycleSeconds } from './breathing.js';
+import { TEMPLATES, composeMessage, mailtoUrl, smsUrl } from './messages.js';
 import { MAX_ACTIVITIES, activeActivities, addActivity, archiveActivity, recordRatings, isCheckDue, activitySummary, lastCheckDate } from './function.js';
 import { addDoc, listDocs, getDoc, deleteDoc, clearDocs } from './docs.js';
 
@@ -632,12 +633,12 @@ function route() {
 function render() {
   const { path, arg } = route();
   document.body.classList.toggle('in-session', path === 'session' && Boolean(S()));
-  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, function: renderFunction, breathe: renderBreathe, settings: renderSettings, add: renderAdd, help: renderHelp };
+  const pages = { home: renderHome, session: renderSession, library: renderLibrary, exercise: () => renderExercise(arg), programme: () => renderProgramme(arg), progress: renderProgress, report: renderReport, function: renderFunction, breathe: renderBreathe, learn: renderLearn, message: () => renderMessage(arg), settings: renderSettings, add: renderAdd, help: renderHelp };
   const fn = pages[path] || renderHome;
   if (path !== 'session') stopFigure();
   if (path !== 'breathe') stopBreathing();
   fn();
-  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress', function: 'progress', breathe: 'home' }[path] || path);
+  setNav({ exercise: 'library', programme: 'library', add: 'library', help: 'settings', report: 'progress', function: 'progress', breathe: 'home', learn: 'library', message: 'home' }[path] || path);
 }
 
 function stopFigure() {
@@ -669,7 +670,7 @@ function renderHome() {
   view.innerHTML = `
     <header class="topbar"><div><h1>PhysioBuddy</h1><div class="sub">${new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })}</div></div>${micChip()}</header>
     ${storageBanner()}${due}${resume}${cards}${checkinHtml()}${functionDueHtml()}
-    <a class="btn soft block" href="#/breathe">🫁 Calm breathing break (optional)</a>
+    <div class="three actions" style="margin-top:0"><a class="btn soft small" href="#/learn">📖 Learn</a><a class="btn soft small" href="#/breathe">🫁 Breathe</a><a class="btn soft small" href="#/message">✉️ Message John</a></div>
     <p class="small muted">This app supports ${esc(CLINICIAN.name)}'s prescribed exercises. It does not replace his assessment. If something feels wrong, stop and contact him.</p>`;
 }
 
@@ -871,6 +872,7 @@ function renderFinished(s) {
     <h1>${stopped ? 'Session stopped' : 'Session complete'}</h1>
     <p class="muted">${stopped ? "Stopping when something doesn't feel right is the right call." : 'Well done for looking after yourself.'}</p></div>
     ${pre.length ? `<div class="banner warn">${pre.map(esc).join('<br>')}</div>` : ''}
+    ${stopped ? '<a class="btn soft block" href="#/message/symptom" style="margin-bottom:10px">✉️ Message John about this</a>' : ''}
     ${sum.milestones && sum.milestones.length ? `<div class="banner info"><strong>🌱 New milestone${sum.milestones.length > 1 ? 's' : ''}:</strong> ${sum.milestones.map(esc).join(' · ')}</div>` : ''}
     <div class="card"><h2>Summary</h2><p>${sum.completed} completed, ${sum.partial} partly done, ${sum.skipped} skipped.</p><p class="muted small">${sum.repsDone} movements counted · ${Math.round(sum.holdSeconds)} seconds of holds.</p></div>
     ${db.settings.askPain ? `<div class="card"><h2>How is your discomfort now?</h2>${painScale('after', s.painAfter)}</div>` : ''}
@@ -888,7 +890,7 @@ function renderLibrary() {
   }).join('');
   const changes = doseChanges(allProgrammes());
   view.innerHTML = `
-    <header class="topbar"><h1>Library</h1><a class="btn small primary" href="#/add">+ Add instructions</a></header>
+    <header class="topbar"><h1>Library</h1><div class="row"><a class="btn small soft" href="#/learn">📖 Learn</a><a class="btn small primary" href="#/add">+ Add instructions</a></div></header>
     <section class="card"><h2>Programmes</h2><ul class="list">${progs.map(programmeRow).join('')}</ul>
       <p class="small muted">Only programmes marked Active appear on Today. Older prescriptions are never merged into today's treatment.</p></section>
     ${changes.length ? `<section class="card"><h2>Dose changed between prescriptions</h2><p class="small muted">These exercises were prescribed with different doses on different dates. Each programme keeps its own dose — check with John which applies now.</p><ul class="list">${changes.map((c) => `<li><a href="#/exercise/${encodeURIComponent(c.exerciseId)}">${esc(exerciseOf(c.exerciseId).name)}</a><div class="small muted">${c.history.map((h) => `${fmtDate(h.programme.prescribedOn)}: ${esc(describeDose(h.item.dose))}`).join(' · ')}</div></li>`).join('')}</ul></section>` : ''}
@@ -1043,6 +1045,96 @@ function milestonesHtml() {
   const list = earnedMilestones(milestoneInput());
   if (!list.length) return '';
   return `<section class="card"><h2>Milestones</h2><ul class="list">${list.slice().reverse().map((m) => `<li>🌱 ${esc(m.text)} <span class="small muted">· ${fmtDate(m.date)}</span></li>`).join('')}</ul><p class="small muted">Milestones only add up — missing a session never takes one away.</p></section>`;
+}
+
+// ---------- Message John (drafts open in the person's own apps) ----------
+let msgDraft = null;
+
+function recentSymptoms() {
+  const from = now() - 7 * 86400000;
+  const fromSessions = db.sessions.filter((s) => s.startedAt >= from).flatMap((s) => s.symptoms || []);
+  const live = S() ? S().events.filter((e) => e.type === 'symptom') : [];
+  const seen = new Set();
+  return [...fromSessions, ...live].filter((e) => !seen.has(e.t) && seen.add(e.t)).sort((a, b) => a.t - b.t);
+}
+
+function newDraft(template) {
+  const c = db.contacts;
+  const { subject, body } = composeMessage({
+    template, symptoms: recentSymptoms(), questions: db.questions.filter((q) => !q.resolved).map((q) => q.text),
+    exerciseName: (id) => exerciseOf(id)?.name || id, formatDate: (t) => fmtDateTime(t), signOff: c.myName,
+  });
+  return { template, subject, body, to: c.johnEmail ? 'john' : 'clinic', withReport: template === 'update' };
+}
+
+function draftWithReport(d) {
+  return d.withReport ? `${d.body}\nMy recent progress (from my exercise app):\n\n${currentReport()}` : d.body;
+}
+
+function renderMessage(template) {
+  if (!msgDraft || (template && template !== msgDraft.template && TEMPLATES[template])) msgDraft = newDraft(TEMPLATES[template] ? template : 'question');
+  const c = db.contacts;
+  const hasContacts = c.johnEmail || c.clinicEmail || c.clinicPhone;
+  const recent = db.messages.slice(-5).reverse();
+  view.innerHTML = `
+    <header class="topbar"><a class="btn small" href="#/home">← Today</a></header>
+    <h1 class="ex-title">Message John</h1>
+    <p class="small muted">PhysioBuddy writes a draft; it opens in your own email or messages app, and nothing is sent until you press Send there.</p>
+    <details class="card" ${hasContacts ? '' : 'open'}><summary>${hasContacts ? 'Contact details' : 'Add contact details first'}</summary>
+      <form id="contacts-form" class="stack"><p class="small muted">Saved on this phone only. Copy them from John's summary letter or emails.</p>
+        <label class="field">John's email<input name="johnEmail" type="email" value="${esc(c.johnEmail)}"></label>
+        <label class="field">Clinic email<input name="clinicEmail" type="email" value="${esc(c.clinicEmail)}"></label>
+        <label class="field">Clinic phone<input name="clinicPhone" type="tel" value="${esc(c.clinicPhone)}"></label>
+        <label class="field">Your name (to sign messages)<input name="myName" value="${esc(c.myName)}"></label>
+        <button class="btn small primary" type="submit">Save details</button></form></details>
+    <div class="row" role="group" aria-label="Message type">${Object.entries(TEMPLATES).map(([k, t]) => `<a class="chip" href="#/message/${k}" aria-pressed="${msgDraft.template === k}">${esc(t.label)}</a>`).join('')}</div>
+    <section class="card stack">
+      <label class="field">To<select id="msg-to"><option value="john" ${msgDraft.to === 'john' ? 'selected' : ''}>John${c.johnEmail ? ` (${esc(c.johnEmail)})` : ' — add his email above'}</option><option value="clinic" ${msgDraft.to === 'clinic' ? 'selected' : ''}>Clinic reception${c.clinicEmail ? ` (${esc(c.clinicEmail)})` : ''}</option></select></label>
+      <label class="field">Subject<input id="msg-subject" value="${esc(msgDraft.subject)}"></label>
+      <label class="field">Message<textarea id="msg-body" rows="10">${esc(msgDraft.body)}</textarea></label>
+      <label class="switch"><span>Add my progress report (last 7 days)</span><input type="checkbox" id="msg-report" ${msgDraft.withReport ? 'checked' : ''}></label>
+      <div class="row"><button class="btn primary" data-action="msg-email">✉️ Open in email</button>${c.clinicPhone ? '<button class="btn" data-action="msg-sms">💬 Text clinic</button><a class="btn" data-action="msg-call" href="tel:' + esc(c.clinicPhone.replace(/[^\d+]/g, '')) + '">📞 Call clinic</a>' : ''}<button class="btn" data-action="msg-share">Share…</button><button class="btn" data-action="msg-copy">Copy</button></div>
+    </section>
+    ${recent.length ? `<section class="card"><h2>Drafts you opened</h2><ul class="list">${recent.map((m) => `<li>${fmtDateTime(m.at)} · ${esc(m.subject)} <span class="small muted">via ${esc(m.channel)}</span></li>`).join('')}</ul><p class="small muted">PhysioBuddy can't see whether a draft was actually sent.</p></section>` : ''}`;
+}
+
+function syncDraft() {
+  if (!msgDraft) return;
+  msgDraft.to = $('#msg-to')?.value || msgDraft.to;
+  msgDraft.subject = $('#msg-subject')?.value ?? msgDraft.subject;
+  msgDraft.body = $('#msg-body')?.value ?? msgDraft.body;
+  msgDraft.withReport = Boolean($('#msg-report')?.checked);
+}
+
+function logDraft(channel) {
+  db.messages.push({ at: now(), subject: msgDraft.subject, template: msgDraft.template, channel });
+  db.messages = db.messages.slice(-50);
+  save();
+}
+
+// ---------- Learn: John's own words, precautions and trusted links ----------
+function renderLearn() {
+  const active = activeProgrammes();
+  const others = allProgrammes().filter((p) => !active.includes(p));
+  const precautions = [...new Set(active.flatMap((p) => p.precautions))];
+  const areas = new Set(active.flatMap((p) => p.items.flatMap((it) => exerciseOf(it.exerciseId)?.areas || [])));
+  const reading = READING.filter((r) => areas.has(r.area));
+  const adviceCard = (p) => {
+    const text = db.advice[p.id] || '';
+    return `<details class="card" ${active.includes(p) ? 'open' : ''}><summary>${esc(p.title)} <span class="small muted">· ${fmtDate(p.prescribedOn)}</span></summary>
+      ${text ? `<blockquote class="advice">${esc(text).replace(/\n/g, '<br>')}</blockquote>` : '<p class="small muted">Nothing saved yet. Copy the advice or plan section from John\'s summary for this visit and paste it here.</p>'}
+      <form class="advice-form stack" data-id="${esc(p.id)}"><label class="field">John's advice (saved on this phone only)<textarea name="advice" rows="4" maxlength="4000">${esc(text)}</textarea></label><button class="btn small" type="submit">Save advice</button></form></details>`;
+  };
+  view.innerHTML = `
+    <header class="topbar"><a class="btn small" href="#/library">← Library</a></header>
+    <h1 class="ex-title">Learn</h1>
+    <section class="card"><h2>When to stop</h2>${precautions.length ? `<ul>${precautions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      <p class="small muted">These are John's precautions for your current programme. If something feels wrong, contact him.</p><a class="btn small soft" href="#/message">Message John</a></section>
+    <h2>John's advice</h2><p class="small muted">In John's own words, copied from his summaries. PhysioBuddy doesn't write medical advice.</p>
+    ${active.map(adviceCard).join('')}
+    ${others.length ? `<details class="card"><summary>Earlier programmes</summary>${others.map(adviceCard).join('')}</details>` : ''}
+    <section class="card"><h2>Your exercises</h2><ul class="list">${[...new Set(active.flatMap((p) => p.items.map((it) => it.exerciseId)))].map((id) => `<li><a href="#/exercise/${encodeURIComponent(id)}">${esc(exerciseOf(id).name)}</a></li>`).join('')}</ul></section>
+    ${reading.length ? `<section class="card"><h2>Trusted reading</h2><ul class="list">${reading.map((r) => `<li><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a><div class="small muted">${esc(r.source)} · opens their website</div></li>`).join('')}</ul><p class="small muted">General information — John's advice for you comes first.</p></section>` : ''}`;
 }
 
 // ---------- Optional breathing break ----------
@@ -1506,6 +1598,44 @@ const ACTIONS = {
     stopBreathing();
     render();
   },
+  'msg-email': () => {
+    syncDraft();
+    const to = msgDraft.to === 'john' ? db.contacts.johnEmail : db.contacts.clinicEmail;
+    logDraft('email');
+    location.href = mailtoUrl(to, { subject: msgDraft.subject, body: draftWithReport(msgDraft) });
+  },
+  'msg-sms': () => {
+    syncDraft();
+    logDraft('text');
+    location.href = smsUrl(db.contacts.clinicPhone, { body: draftWithReport(msgDraft) });
+  },
+  'msg-call': () => {
+    logDraft('phone call');
+    location.href = `tel:${db.contacts.clinicPhone.replace(/[^\d+]/g, '')}`;
+  },
+  'msg-share': async () => {
+    syncDraft();
+    const text = `${msgDraft.subject}\n\n${draftWithReport(msgDraft)}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: msgDraft.subject, text });
+        logDraft('share');
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    }
+    ACTIONS['msg-copy']();
+  },
+  'msg-copy': async () => {
+    syncDraft();
+    try {
+      await navigator.clipboard.writeText(`${msgDraft.subject}\n\n${draftWithReport(msgDraft)}`);
+      toast('Copied. Paste it into a message to John.');
+    } catch {
+      toast('Copy was blocked — select the message text and copy it instead.');
+    }
+  },
   'report-days': (el) => {
     reportDays = Number(el.dataset.days);
     render();
@@ -1587,6 +1717,26 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('submit', (e) => {
+  if (e.target.id === 'contacts-form') {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    for (const k of ['johnEmail', 'clinicEmail', 'clinicPhone', 'myName']) db.contacts[k] = String(fd.get(k) || '').trim();
+    save();
+    msgDraft = null;
+    toast('Saved on this phone.');
+    render();
+    return;
+  }
+  if (e.target.classList.contains('advice-form')) {
+    e.preventDefault();
+    const text = String(new FormData(e.target).get('advice') || '').trim();
+    if (text) db.advice[e.target.dataset.id] = text;
+    else delete db.advice[e.target.dataset.id];
+    save();
+    toast('Saved on this phone.');
+    render();
+    return;
+  }
   if (e.target.id === 'fn-form') {
     e.preventDefault();
     db.function = addActivity(db.function, new FormData(e.target).get('name'), now());
